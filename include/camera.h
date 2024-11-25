@@ -5,7 +5,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
-#include <Mouse.h>
+//#include <Mouse.h>
+#include <d3dcompiler.h>
 using namespace DirectX;
 
 class Camera {
@@ -15,10 +16,12 @@ public:
 	void MoveRight(float distance);
 	void MoveUp(float distance);
 	void RotateCamera(float dx, float dy);
-
+	void RotateY(float angle);
 	void InitializeMouse(HWND window);
 	XMMATRIX GetViewMatrix();
+
 	
+
 
 private:
 	XMVECTOR position;
@@ -28,8 +31,7 @@ private:
 	float yaw = 0.0f;
 	float pitch = 0.0f;
 	const float mouseSensitivity = 0.1f;
-	std::unique_ptr<Mouse> m_mouse;
-
+	//std::unique_ptr<Mouse> m_mouse;
 	const float ROTATION_GAIN = 0.004f;
 	const float MOVEMENT_GAIN = 0.07f;
 };

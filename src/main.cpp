@@ -22,7 +22,7 @@
 constexpr int WIDTH = 1024;
 constexpr int HEIGHT = 768;
 constexpr size_t NUM_RENDERTARGETS = 3;
-
+bool isRightButtonDown = false;
 // timer for retrieving delta time between frames
 Timer timer;
 
@@ -37,6 +37,8 @@ ID3D11DeviceContext *deviceContext;
 ID3D11RenderTargetView *backbuffer;
 
 // shaders
+ShaderProgram testShader;
+ComputeShader testComputeShader;
 ShaderProgram modelShader;
 ShaderProgram quadCompositeShader;
 ComputeShader thresholdDownsampleShader;
@@ -147,7 +149,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     InitD3D(hWnd);
 
     InitRenderData();
-
+    camera.InitializeMouse(hWnd);
     // main loop
     timer.Start();
 
@@ -192,44 +194,22 @@ void UpdateTick(float deltaTime)
 {
     // Camera movement speed
     const float cameraSpeed = 2.0f * deltaTime;
+    const float rotationSpeed = 2.0f * deltaTime;
 
-    // Check for key presses and move the camera accordingly
+    // Forward/Backward movement
     if (GetAsyncKeyState('W') & 0x8000) camera.MoveForward(cameraSpeed);
     if (GetAsyncKeyState('S') & 0x8000) camera.MoveForward(-cameraSpeed);
+
+    // Left/Right movement
     if (GetAsyncKeyState('A') & 0x8000) camera.MoveRight(cameraSpeed);
     if (GetAsyncKeyState('D') & 0x8000) camera.MoveRight(-cameraSpeed);
-    if (GetAsyncKeyState('Q') & 0x8000) camera.MoveUp(cameraSpeed);
-    if (GetAsyncKeyState('E') & 0x8000) camera.MoveUp(-cameraSpeed);
+    // Up/Down movement
+    if (GetAsyncKeyState(VK_SPACE) & 0x8000) camera.MoveUp(cameraSpeed);
+    if (GetAsyncKeyState(VK_SHIFT) & 0x8000) camera.MoveUp(-cameraSpeed);
 
-    static POINT lastMousePos = { WIDTH / 2, HEIGHT / 2 };
-
-    if (GetAsyncKeyState(VK_RBUTTON) & 0x8000) {
-        // Hide cursor
-        ShowCursor(FALSE);
-
-        POINT currentMousePos;
-        GetCursorPos(&currentMousePos);
-
-        // Calculate mouse movement
-        float dx = static_cast<float>(currentMousePos.x - lastMousePos.x);
-        float dy = static_cast<float>(currentMousePos.y - lastMousePos.y);
-
-        // Rotate camera based on mouse movement
-        camera.RotateCamera(dx, -dy); // Invert Y-axis for intuitive control
-
-        // Reset cursor position to center of window
-        SetCursorPos(WIDTH / 2, HEIGHT / 2);
-        lastMousePos.x = WIDTH / 2;
-        lastMousePos.y = HEIGHT / 2;
-    }
-    else {
-        // Show cursor when not rotating
-        ShowCursor(TRUE);
-
-        // Update last known mouse position to center when not rotating
-        lastMousePos.x = WIDTH / 2;
-        lastMousePos.y = HEIGHT / 2;
-    }
+    // Rotation
+    if (GetAsyncKeyState('E') & 0x8000) camera.RotateY(rotationSpeed);
+    if (GetAsyncKeyState('Q') & 0x8000) camera.RotateY(-rotationSpeed);
 
     // Update view transform
     transforms.view = DirectX::XMMatrixTranspose(camera.GetViewMatrix());
@@ -939,6 +919,7 @@ void InitD3D(HWND hWnd)
     ID3DBlob* errorBlob = nullptr;
 
     // model shader
+    
     {
         auto hr = D3DCompileFromFile(L"shaders/phong.hlsl", 0, 0, "VSMain", "vs_4_0", 0, 0, &modelShader.vsBlob, &errorBlob);
         if (FAILED(hr))
@@ -1029,6 +1010,46 @@ void InitD3D(HWND hWnd)
         }
         device->CreateComputeShader(blurShader.csBlob->GetBufferPointer(), blurShader.csBlob->GetBufferSize(), NULL, &blurShader.cShader);
     }
+    /*
+    auto hr = D3DCompileFromFile(L"shaders/vertexShader.hlsl", 0, 0, "VSMain", "vs_5_0", 0, 0, &testShader.vsBlob, &errorBlob);
+    if (FAILED(hr))
+    {
+        if (errorBlob)
+        {
+            OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+            errorBlob->Release();
+        }
+
+        exit(-1);
+    }
+    hr = D3DCompileFromFile(L"shaders/pixelShader.hlsl", 0, 0, "PSMain", "ps_5_0", 0, 0, &testShader.psBlob, &errorBlob);
+    if (FAILED(hr))
+    {
+        if (errorBlob)
+        {
+            OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+            errorBlob->Release();
+        }
+
+        exit(-1);
+    }
+
+    device->CreateVertexShader(testShader.vsBlob->GetBufferPointer(), testShader.vsBlob->GetBufferSize(), NULL, &testShader.vShader);
+    device->CreatePixelShader(testShader.psBlob->GetBufferPointer(), testShader.psBlob->GetBufferSize(), NULL, &testShader.pShader);
+
+    hr = D3DCompileFromFile(L"shaders/computeShader.hlsl", 0, 0, "CSMain", "cs_5_0", 0, 0, &testComputeShader.csBlob, &errorBlob);
+    if (FAILED(hr))
+    {
+        if (errorBlob)
+        {
+            OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+            errorBlob->Release();
+        }
+
+        exit(-1);
+    }
+    device->CreateComputeShader(testComputeShader.csBlob->GetBufferPointer(), testComputeShader.csBlob->GetBufferSize(), NULL, &testComputeShader.cShader);
+    */
 }
 
 void ShutdownD3D()
