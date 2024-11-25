@@ -1,19 +1,15 @@
 #define NOMINMAX
 #include <windows.h>
-
 #include <windowsx.h>
-
 #include <d3d11.h>
-
+#include <DirectXMath.h>
+#include <array>
+#include <iostream>
 #include <d3dcompiler.h>
 
 #pragma comment (lib, "d3d11.lib")
+#pragma comment (lib, "DirectXTK.lib")
 #pragma comment (lib, "d3dcompiler.lib")
-
-#include <DirectXMath.h>
-
-#include <array>
-#include <iostream>
 
 #include "geometry.h"
 #include "resource.h"
@@ -101,6 +97,7 @@ void CleanUpRenderData();
 void UpdateTick(float deltaTime);
 // rendering
 void RenderFrame();
+
 
 // WindowProc callback function
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -203,6 +200,36 @@ void UpdateTick(float deltaTime)
     if (GetAsyncKeyState('D') & 0x8000) camera.MoveRight(-cameraSpeed);
     if (GetAsyncKeyState('Q') & 0x8000) camera.MoveUp(cameraSpeed);
     if (GetAsyncKeyState('E') & 0x8000) camera.MoveUp(-cameraSpeed);
+
+    static POINT lastMousePos = { WIDTH / 2, HEIGHT / 2 };
+
+    if (GetAsyncKeyState(VK_RBUTTON) & 0x8000) {
+        // Hide cursor
+        ShowCursor(FALSE);
+
+        POINT currentMousePos;
+        GetCursorPos(&currentMousePos);
+
+        // Calculate mouse movement
+        float dx = static_cast<float>(currentMousePos.x - lastMousePos.x);
+        float dy = static_cast<float>(currentMousePos.y - lastMousePos.y);
+
+        // Rotate camera based on mouse movement
+        camera.RotateCamera(dx, -dy); // Invert Y-axis for intuitive control
+
+        // Reset cursor position to center of window
+        SetCursorPos(WIDTH / 2, HEIGHT / 2);
+        lastMousePos.x = WIDTH / 2;
+        lastMousePos.y = HEIGHT / 2;
+    }
+    else {
+        // Show cursor when not rotating
+        ShowCursor(TRUE);
+
+        // Update last known mouse position to center when not rotating
+        lastMousePos.x = WIDTH / 2;
+        lastMousePos.y = HEIGHT / 2;
+    }
 
     // Update view transform
     transforms.view = DirectX::XMMatrixTranspose(camera.GetViewMatrix());
