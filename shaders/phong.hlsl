@@ -50,7 +50,7 @@ cbuffer Material : register(b1)
 };
 
 // pixel shader
-float4 PSMain(VertexOut p) : SV_TARGET
+float4 PSMain(VertexOut p) : SV_TARGET	
 {
     // blinn-phong model
     float3 l = lightPositionViewSpace.xyz - p.viewSpacePosition.xyz;

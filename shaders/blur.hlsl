@@ -2,6 +2,7 @@
 
 Texture2D<float4> inputTexture : register(t0);
 RWTexture2D<float4> outputTexture : register(u0);
+RWStructuredBuffer<uint2> kbuffer : register(u1);
 
 cbuffer BlurParams : register(b0)
 {
@@ -26,6 +27,6 @@ void Blur(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID, ui
         uint cIndex = (uint) abs(i);
         accumulatedValue += coefficients[cIndex >> 2][cIndex & 3] * inputTexture[mad(i, dir, pixel)];
     }
-
+	kbuffer[0] = uint2(1,0);
     outputTexture[pixel] = accumulatedValue;
 }

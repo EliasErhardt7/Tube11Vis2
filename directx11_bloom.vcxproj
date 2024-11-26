@@ -19,7 +19,6 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="packages\directxtk_uwp.2024.10.29.1\include\Mouse.cpp" />
     <ClCompile Include="src\camera.cpp" />
     <ClCompile Include="src\geometry.cpp" />
     <ClCompile Include="src\main.cpp" />

@@ -22,6 +22,7 @@
 constexpr int WIDTH = 1024;
 constexpr int HEIGHT = 768;
 constexpr size_t NUM_RENDERTARGETS = 3;
+constexpr size_t NUM_STORAGETARGETS = 1;
 bool isRightButtonDown = false;
 // timer for retrieving delta time between frames
 Timer timer;
@@ -46,6 +47,7 @@ ComputeShader blurShader;
 
 // render targets and depth-stencil target
 RenderTarget renderTargets[NUM_RENDERTARGETS];
+StorageTarget storageTargets[NUM_STORAGETARGETS];
 DepthStencilTarget depthStencilTarget;
 
 // depth-stencil states
@@ -110,6 +112,11 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 // entry point
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
+    UINT creationFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+#if defined(_DEBUG)
+    creationFlags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+
     // window handle and information
     HWND hWnd = nullptr;
     WNDCLASSEX wc = { };
@@ -281,7 +288,7 @@ void RenderFrame()
         // unbind render target and turn depth test off
         deviceContext->OMSetRenderTargets(1, &NULL_RT, nullptr);
         deviceContext->OMSetDepthStencilState(depthStencilStateWithoutDepthTest, 0);
-    }
+    }   
 
     // use compute shaders for post-processing
 
@@ -311,10 +318,11 @@ void RenderFrame()
     // 2. Gaussian blur (in two passes) - use renderTargets[1] and renderTargets[2] with half resolution
     deviceContext->CSSetShader(blurShader.cShader, 0, 0);
     std::array<ID3D11ShaderResourceView*, 2> csSRVs = { renderTargets[1].shaderResourceView, renderTargets[2].shaderResourceView };
-    std::array<ID3D11UnorderedAccessView*, 2> csUAVs = { renderTargets[2].unorderedAccessView, renderTargets[1].unorderedAccessView };
-    for (UINT direction = 0; direction < 2; ++direction)
-    {
-        blurParams.direction = direction;
+    std::array<ID3D11UnorderedAccessView*, 3> csUAVs = { renderTargets[2].unorderedAccessView, renderTargets[1].unorderedAccessView, storageTargets[0].unorderedAccessView };
+    ID3D11UnorderedAccessView* kBuffer = storageTargets[0].unorderedAccessView;
+    //for (UINT direction = 0; direction < 2; ++direction)
+    //{
+        blurParams.direction = 1;
         {
             D3D11_MAPPED_SUBRESOURCE ms;
             size_t test = sizeof(BlurParams);
@@ -323,8 +331,9 @@ void RenderFrame()
             deviceContext->Unmap(blurConstantBuffer, 0);
         }
 
-        deviceContext->CSSetShaderResources(0, 1, &csSRVs[direction]);
-        deviceContext->CSSetUnorderedAccessViews(0, 1, &csUAVs[direction], &NO_OFFSET);
+        deviceContext->CSSetShaderResources(0, 1, &csSRVs[1]);
+        deviceContext->CSSetUnorderedAccessViews(0, 2, &csUAVs[1], &NO_OFFSET);
+        //deviceContext->CSSetUnorderedAccessViews(1, 1, &kBuffer, &NO_OFFSET);
 
         deviceContext->CSSetConstantBuffers(0, 1, &blurConstantBuffer);
 
@@ -332,8 +341,10 @@ void RenderFrame()
 
         // unbind UAV and SRVs
         deviceContext->CSSetShaderResources(0, 1, &NULL_SRV);
-        deviceContext->CSSetUnorderedAccessViews(0, 1, &NULL_UAV, &NO_OFFSET);
-    }
+        //deviceContext->CSSetUnorderedAccessViews(0, 1, &NULL_UAV, &NO_OFFSET);
+        ID3D11UnorderedAccessView* nullUAVs[2] = { nullptr, nullptr };
+        deviceContext->CSSetUnorderedAccessViews(0, 2, nullUAVs, nullptr);
+    //}
 
     // Composite blurred half-res image with original image in pixel shader by rendering a fullscreen quad
     // to the back buffer (no need to clear since we render a fullscreen quad without depth test)
@@ -346,8 +357,8 @@ void RenderFrame()
     deviceContext->IASetVertexBuffers(0, 1, &screenAlignedQuadMesh.vertexBuffer, &screenAlignedQuadMesh.stride, &screenAlignedQuadMesh.offset);
     deviceContext->IASetPrimitiveTopology(screenAlignedQuadMesh.topology);
 
-    std::array<ID3D11ShaderResourceView*, 2> compositeSRVs = { renderTargets[0].shaderResourceView, renderTargets[1].shaderResourceView };
-    deviceContext->PSSetShaderResources(0, 2, &compositeSRVs[0]);
+    std::array<ID3D11ShaderResourceView*, 3> compositeSRVs = { renderTargets[0].shaderResourceView, renderTargets[1].shaderResourceView, storageTargets[0].shaderResourceView };
+    deviceContext->PSSetShaderResources(0, 3, &compositeSRVs[0]);
 
     deviceContext->PSSetSamplers(0, 1, &defaultSamplerState);
 
@@ -447,6 +458,57 @@ void InitRenderData()
             exit(-1);
         }
     }
+
+    // ----------------------- STORAGE TARGET --------------------------------------------
+    {
+        D3D11_BUFFER_DESC bufferDesc;
+        D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
+        D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
+
+        ZeroMemory(&bufferDesc, sizeof(D3D11_BUFFER_DESC));
+        ZeroMemory(&srvDesc, sizeof(D3D11_SHADER_RESOURCE_VIEW_DESC));
+        ZeroMemory(&uavDesc, sizeof(D3D11_UNORDERED_ACCESS_VIEW_DESC));
+
+        bufferDesc.ByteWidth = WIDTH * HEIGHT * sizeof(UINT64);
+        bufferDesc.Usage = D3D11_USAGE_DEFAULT;
+        bufferDesc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
+        bufferDesc.CPUAccessFlags = 0;
+        bufferDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        bufferDesc.StructureByteStride = sizeof(UINT64);
+
+        result = device->CreateBuffer(&bufferDesc, NULL, &storageTargets[0].structuredBuffer);
+        if (FAILED(result))
+        {
+            std::cerr << "Failed to create render target texture\n";
+            exit(-1);
+        }
+
+        srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+        srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+        srvDesc.Buffer.FirstElement = 0;
+        srvDesc.Buffer.NumElements = WIDTH * HEIGHT;
+        
+        result = device->CreateShaderResourceView(storageTargets[0].structuredBuffer, &srvDesc, &storageTargets[0].shaderResourceView);
+        if (FAILED(result))
+        {
+            std::cerr << "Failed to create render target texture SRV\n";
+            exit(-1);
+        }
+
+        uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+        uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+        uavDesc.Buffer.FirstElement = 0;
+        uavDesc.Buffer.NumElements = WIDTH * HEIGHT;
+
+        result = device->CreateUnorderedAccessView(storageTargets[0].structuredBuffer, &uavDesc, &storageTargets[0].unorderedAccessView);
+        if (FAILED(result))
+        {
+            std::cerr << "Failed to create render target texture UAV\n";
+            exit(-1);
+        }
+    }
+
+    // ----------------------- STORAGE TARGET END--------------------------------------------
 
     // intialize depth-stencil target
     {

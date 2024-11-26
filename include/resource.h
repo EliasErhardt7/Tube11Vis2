@@ -31,6 +31,13 @@ struct RenderTarget
     ID3D11UnorderedAccessView* unorderedAccessView;
 };
 
+struct StorageTarget
+{
+    ID3D11Buffer* structuredBuffer;
+    ID3D11ShaderResourceView* shaderResourceView;
+    ID3D11UnorderedAccessView* unorderedAccessView;
+};
+
 struct DepthStencilTarget
 {
     ID3D11Texture2D* dsTexture;

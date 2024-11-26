@@ -12,6 +12,7 @@ struct VertexPosTexCoordOut
 
 Texture2D tex0 : register(t0);
 Texture2D tex1 : register(t1);
+StructuredBuffer<uint2> kBuffer : register(t2);
 
 cbuffer CompositeParams: register(b0)
 {
@@ -34,5 +35,6 @@ VertexPosTexCoordOut VSMain(VertexPosTexCoordIn v)
 float4 PSMain(VertexPosTexCoordOut p) : SV_TARGET
 {
     // output: tex0 + coefficient * tex1
-    return mad(coefficient, tex1.Sample(texSampler, p.tex), tex0.Sample(texSampler, p.tex));
+	
+    return mad(coefficient, float4(kBuffer[0],0,1), tex0.Sample(texSampler, p.tex));
 }
