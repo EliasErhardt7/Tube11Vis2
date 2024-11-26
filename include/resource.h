@@ -6,10 +6,12 @@ struct ShaderProgram
 {
     // binary blobs for vertex and pixel shader
     ID3D10Blob* vsBlob;
+    ID3D10Blob* gsBlob;
     ID3D10Blob* psBlob;
 
     // vertex and pixel shader
     ID3D11VertexShader* vShader;
+    ID3D11GeometryShader* gShader;
     ID3D11PixelShader* pShader;
 };
 

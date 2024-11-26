@@ -27,6 +27,6 @@ void Blur(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID, ui
         uint cIndex = (uint) abs(i);
         accumulatedValue += coefficients[cIndex >> 2][cIndex & 3] * inputTexture[mad(i, dir, pixel)];
     }
-	kbuffer[0] = uint2(1,0);
+	kbuffer[pixel.x*pixel.y] = dispatchID.xy;
     outputTexture[pixel] = accumulatedValue;
 }

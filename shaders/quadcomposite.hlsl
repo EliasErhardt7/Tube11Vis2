@@ -31,10 +31,41 @@ VertexPosTexCoordOut VSMain(VertexPosTexCoordIn v)
     return output;
 }
 
+// geometry shader
+// Input and output structures for the geometry shader
+
+struct GSOutput
+{
+    float4 position : SV_POSITION;
+    float2 tex : TEXCOORD;
+};
+
+// Geometry Shader
+[maxvertexcount(3)]
+void GSMain(triangle VertexPosTexCoordOut input[3], inout TriangleStream<GSOutput> outputStream)
+{
+    GSOutput output;
+    
+    // Pass through each vertex of the triangle
+    for (int i = 0; i < 3; i++)
+    {
+        output.position = input[i].position/2;
+        output.tex = input[i].tex;
+        
+        // You can add additional processing here if needed
+        // For example, you could offset the vertices or modify the texture coordinates
+        
+        outputStream.Append(output);
+    }
+    
+    outputStream.RestartStrip();
+}
+
 // pixel shader
-float4 PSMain(VertexPosTexCoordOut p) : SV_TARGET
+float4 PSMain(GSOutput p) : SV_TARGET
 {
     // output: tex0 + coefficient * tex1
-	
-    return mad(coefficient, float4(kBuffer[0],0,1), tex0.Sample(texSampler, p.tex));
+	float x = float((kBuffer[p.position.x].x*kBuffer[p.position.x].y)/1024.f);
+	float y = float((kBuffer[p.position.y].x*kBuffer[p.position.y].y)/768.f);
+    return float4(x,y,0,1); //mad(coefficient, , tex0.Sample(texSampler, p.tex));
 }
