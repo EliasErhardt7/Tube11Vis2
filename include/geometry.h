@@ -19,12 +19,12 @@ struct VertexData
 };
 
 constexpr std::array<VertexData, 6> VertexTube = {
-    VertexData{ DirectX::XMFLOAT3(-1.f,  1.f, 0.f), 0.f, 0.f},
+    VertexData{ DirectX::XMFLOAT3(-0.f,  1.5f, 0.f), 0.5f, 0.f},
     VertexData{ DirectX::XMFLOAT3(1.f, -1.f, 0.f), 1.f, 1.f },
-    VertexData{ DirectX::XMFLOAT3(-1.f, -1.f, 0.f), 0.f, 1.f },
-    VertexData{ DirectX::XMFLOAT3(-1.f,  1.f, 0.f), 0.f, 0.f },
-    VertexData{ DirectX::XMFLOAT3(1.f,  1.f, 0.f), 1.f, 0.f },
-    VertexData{ DirectX::XMFLOAT3(1.f, -1.f, 0.f), 1.f, 1.f }
+    VertexData{ DirectX::XMFLOAT3(-1.5f, -1.f, 0.f), 5.f, 1.5f },
+    VertexData{ DirectX::XMFLOAT3(-1.f,  1.f, 0.5f), 0.f, 7.f },
+    VertexData{ DirectX::XMFLOAT3(1.f,  1.5f, 0.f), 4.f, 0.f },
+    VertexData{ DirectX::XMFLOAT3(1.5f, -1.f, 0.f), 1.f, 1.f }
 };
 
 struct VertexPosTexCoord

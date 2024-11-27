@@ -132,7 +132,7 @@
       <AdditionalIncludeDirectories>packages\directxtk_uwp.2024.10.29.1\native\lib\x64\Debug;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>RuntimeObject.lib;dxgi.lib;dxguid.lib;DirectXTK.lib;d3d11.lib;d3dcompiler.lib;$(CoreLibraryDependencies);%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>packages\directxtk_uwp.2024.10.29.1\native\lib\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -169,7 +169,7 @@
       <AdditionalIncludeDirectories>packages\directxtk_uwp.2024.10.29.1\native\lib\x64\Debug;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>

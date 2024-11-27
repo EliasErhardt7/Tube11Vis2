@@ -5,7 +5,6 @@
 #include <DirectXMath.h>
 #include <array>
 #include <iostream>
-#include <sstream>
 #include <d3dcompiler.h>
 
 #pragma comment (lib, "d3d11.lib")
@@ -102,12 +101,12 @@ XMVECTOR mVertexColorMax = { 1.0F, 0.0F, 0.0F, 1.f };
 int mVertexAlphaMode = 0;
 bool mVertexAlphaInvert = false;
 float mVertexAlphaStatic = 0.5;
-XMVECTOR mVertexAlphaBounds = { 0.5, 0.8 , 0.0, 0.f};
+XMVECTOR mVertexAlphaBounds = { 0.2, 0.8 , 0.0, 0.f};
 
 int mVertexRadiusMode = 0;
 bool mVertexRadiusInvert = false;
 float mVertexRadiusStatic = 0.001;
-XMVECTOR mVertexRadiusBounds = { 0.001, 0.002, 0.0, 0.0 };
+XMVECTOR mVertexRadiusBounds = { 0.0005, 0.002, 0.0, 0.0 };
 
 long mRenderCallCount = 0;
 int mkBufferLayer = 8;
@@ -251,7 +250,7 @@ void UpdateTick(float deltaTime)
     transforms.view = DirectX::XMMatrixTranspose(camera.GetViewMatrix());
 
     // Update projection transform (unchanged)
-    transforms.proj = DirectX::XMMatrixTranspose(DirectX::XMMatrixPerspectiveFovLH(1.0f, static_cast<float>(WIDTH) / static_cast<float>(HEIGHT), 0.02f, 100.f));
+    transforms.proj = DirectX::XMMatrixTranspose(DirectX::XMMatrixPerspectiveFovLH(1.5f, static_cast<float>(WIDTH) / static_cast<float>(HEIGHT), 0.01f, 100.f));
 
     // Update model transform (rotation)
     constexpr float millisecondsToAngle = 0.0001f * 6.28f;
@@ -271,6 +270,80 @@ void RenderFrame()
     constexpr ID3D11UnorderedAccessView* NULL_UAV = nullptr;
     constexpr UINT NO_OFFSET = -1;
 
+    // first pass: render the mesh with Blinn-Phong lighting
+    {
+        // clear and set up the render target
+        constexpr float backgroundColor[4] = { 0.f, 0.f, 0.f, 1.f };
+        deviceContext->ClearRenderTargetView(renderTargets[0].renderTargetView, backgroundColor);
+        deviceContext->ClearDepthStencilView(depthStencilTarget.dsView, D3D11_CLEAR_DEPTH, 1.f, 0);
+        deviceContext->OMSetRenderTargets(1, &renderTargets[0].renderTargetView, depthStencilTarget.dsView);
+
+        // set depth-stencil state
+        deviceContext->OMSetDepthStencilState(depthStencilStateWithDepthTest, 0);
+
+        // set the shader objects
+        deviceContext->VSSetShader(modelShader.vShader, 0, 0);
+        deviceContext->PSSetShader(modelShader.pShader, 0, 0);
+
+        // set vertex input layout, vertex buffer and primitive topology
+        deviceContext->IASetInputLayout(objModelMesh.vertexLayout);
+        deviceContext->IASetVertexBuffers(0, 1, &objModelMesh.vertexBuffer, &objModelMesh.stride, &objModelMesh.offset);
+        deviceContext->IASetPrimitiveTopology(objModelMesh.topology);
+
+        // update the transformation matrices in the constant buffer
+        {
+            D3D11_MAPPED_SUBRESOURCE ms;
+            deviceContext->Map(transformConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
+            memcpy(ms.pData, &transforms, sizeof(Transformations));
+            deviceContext->Unmap(transformConstantBuffer, 0);
+        }
+        // update light source constant buffer
+        {
+            D3D11_MAPPED_SUBRESOURCE ms;
+            deviceContext->Map(lightSourceConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
+            memcpy(ms.pData, &lightSource, sizeof(LightSource));
+            deviceContext->Unmap(lightSourceConstantBuffer, 0);
+        }
+
+        // set the constant buffers for transformations, material, and light source
+        std::array<ID3D11Buffer*, 3> constantBuffers{ transformConstantBuffer, lightSourceConstantBuffer, materialConstantBuffer };
+        deviceContext->VSSetConstantBuffers(0, 1, &constantBuffers[0]);
+        deviceContext->PSSetConstantBuffers(0, 2, &constantBuffers[1]);
+
+        // draw the mesh
+        deviceContext->Draw(objModelMesh.vertexCount, 0);
+
+        // unbind render target and turn depth test off
+        deviceContext->OMSetRenderTargets(1, &NULL_RT, nullptr);
+        deviceContext->OMSetDepthStencilState(depthStencilStateWithoutDepthTest, 0);
+    }   
+
+    // use compute shaders for post-processing
+
+    // 1. downsample to half resolution and threshold
+    {
+        ThresholdParams thresholdParams = { 0.5f };
+        {
+            D3D11_MAPPED_SUBRESOURCE ms;
+            deviceContext->Map(thresholdConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
+            memcpy(ms.pData, &thresholdParams, sizeof(ThresholdParams));
+            deviceContext->Unmap(thresholdConstantBuffer, 0);
+        }
+
+        deviceContext->CSSetShader(thresholdDownsampleShader.cShader, 0, 0);
+        deviceContext->CSSetShaderResources(0, 1, &renderTargets[0].shaderResourceView);
+        deviceContext->CSSetUnorderedAccessViews(0, 1, &renderTargets[1].unorderedAccessView, &NO_OFFSET);
+        deviceContext->CSSetConstantBuffers(0, 1, &thresholdConstantBuffer);
+
+        deviceContext->Dispatch(WIDTH / 16, HEIGHT / 16, 1);
+
+        // unbind UAV and SRVs
+        deviceContext->CSSetShaderResources(0, 1, &NULL_SRV);
+        deviceContext->CSSetUnorderedAccessViews(0, 1, &NULL_UAV, &NO_OFFSET);
+    }
+
+
+    // 2. Gaussian blur (in two passes) - use renderTargets[1] and renderTargets[2] with half resolution
     deviceContext->CSSetShader(computeShader.cShader, 0, 0);
     std::array<ID3D11UnorderedAccessView*, 1> csUAVs = { storageTargets[0].unorderedAccessView };
     ID3D11UnorderedAccessView* kBuffer = storageTargets[0].unorderedAccessView;
@@ -590,6 +663,56 @@ void InitRenderData()
         deviceContext->RSSetState(defaultRasterizerState);
     }
 
+    //initialize model vertex buffer
+    {
+        std::vector<VertexPosNormal> meshData;
+        if (!LoadObjFile("data/mesh.obj", meshData))
+        {
+            std::cerr << "Loading Obj Mesh failed";
+            exit(-1);
+        }
+
+        D3D11_BUFFER_DESC bd;
+        ZeroMemory(&bd, sizeof(D3D11_BUFFER_DESC));
+
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.ByteWidth = static_cast<UINT>(sizeof(VertexPosNormal) * meshData.size());
+        bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+        // create the buffer
+        result = device->CreateBuffer(&bd, NULL, &objModelMesh.vertexBuffer);
+        if (FAILED(result))
+        {
+            std::cerr << "Failed to create model vertex buffer\n";
+            exit(-1);
+        }
+
+        // copy vertex data to buffer
+        D3D11_MAPPED_SUBRESOURCE ms;
+        deviceContext->Map(objModelMesh.vertexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
+        memcpy(ms.pData, meshData.data(), sizeof(VertexPosNormal)* meshData.size());
+        deviceContext->Unmap(objModelMesh.vertexBuffer, NULL);
+
+        // create input vertex layout
+        D3D11_INPUT_ELEMENT_DESC ied[] =
+        {
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0}
+        };
+
+        result = device->CreateInputLayout(ied, 2, modelShader.vsBlob->GetBufferPointer(), modelShader.vsBlob->GetBufferSize(), &objModelMesh.vertexLayout);
+        if (FAILED(result))
+        {
+            std::cerr << "Failed to create model input layout\n";
+            exit(-1);
+        }
+
+        objModelMesh.vertexCount = static_cast<UINT>(meshData.size());
+        objModelMesh.stride = static_cast<UINT>(sizeof(VertexPosNormal));
+        objModelMesh.offset = 0;
+        objModelMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+    }
 
     // initialize screen aligned quad
     {
@@ -598,7 +721,6 @@ void InitRenderData()
 
         bd.Usage = D3D11_USAGE_DYNAMIC;
         bd.ByteWidth = static_cast<UINT>(sizeof(VertexData) * VertexTube.size());
-        
         bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
         bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 
@@ -634,7 +756,7 @@ void InitRenderData()
         vertexTubeMesh.vertexCount = static_cast<UINT>(VertexTube.size());
         vertexTubeMesh.stride = static_cast<UINT>(sizeof(VertexData));
         vertexTubeMesh.offset = 0;
-        vertexTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_LINELIST_ADJ;
+        vertexTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
     }
 
     // initialize transforms
@@ -753,6 +875,25 @@ void InitRenderData()
         }
     }
 
+    // compute shader constant buffers
+    {
+        D3D11_BUFFER_DESC bd;
+        ZeroMemory(&bd, sizeof(CD3D11_BUFFER_DESC));
+
+        bd.ByteWidth = sizeof(ThresholdParams);
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+        // create the buffer
+        result = device->CreateBuffer(&bd, NULL, &thresholdConstantBuffer);
+        if (FAILED(result))
+        {
+            std::cerr << "Failed to create threshold constant buffer\n";
+            exit(-1);
+        }
+    }
+
     // compute kBufferInfo parameter
     {
         computeInfo.kBufferInfo = DirectX::XMFLOAT4(WIDTH,HEIGHT,mkBufferLayer,0);
@@ -800,9 +941,12 @@ void CleanUpRenderData()
 
     compositionConstantBuffer->Release();
     computeConstantBuffer->Release();
+    thresholdConstantBuffer->Release();
 
 
     // meshes
+    objModelMesh.vertexBuffer->Release();
+    objModelMesh.vertexLayout->Release();
 
     vertexTubeMesh.vertexBuffer->Release();
     vertexTubeMesh.vertexLayout->Release();
@@ -839,14 +983,11 @@ void InitD3D(HWND hWnd)
     scd.SampleDesc.Count = 1;                                   // how many multisamples
     scd.Windowed = TRUE;                                        // windowed/full-screen mode
 
-    //D3D_FEATURE_LEVEL* featureLevel;
-    UINT createDeviceFlags = D3D11_CREATE_DEVICE_DEBUG;
-
     // create a device, device context and swap chain
     D3D11CreateDeviceAndSwapChain(NULL,
         D3D_DRIVER_TYPE_HARDWARE,
         NULL,
-        createDeviceFlags,
+        NULL,
         NULL,
         NULL,
         D3D11_SDK_VERSION,
@@ -871,13 +1012,45 @@ void InitD3D(HWND hWnd)
         std::cerr << "Could not obtain backbuffer from swapchain";
         exit(-1);
     }
-    
+
+    // build shaders
     ID3DBlob* errorBlob = nullptr;
-    UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+
+    // model shader
     
+    {
+        auto hr = D3DCompileFromFile(L"shaders/phong.hlsl", 0, 0, "VSMain", "vs_4_0", 0, 0, &modelShader.vsBlob, &errorBlob);
+        if (FAILED(hr))
+        {
+            if (errorBlob)
+            {
+                OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+                errorBlob->Release();
+            }
+
+            exit(-1);
+        }
+
+        hr = D3DCompileFromFile(L"shaders/phong.hlsl", 0, 0, "PSMain", "ps_4_0", 0, 0, &modelShader.psBlob, &errorBlob);
+        if (FAILED(hr))
+        {
+            if (errorBlob)
+            {
+                OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+                errorBlob->Release();
+            }
+
+            exit(-1);
+        }
+
+        // encapsulate both shaders into shader objects
+        device->CreateVertexShader(modelShader.vsBlob->GetBufferPointer(), modelShader.vsBlob->GetBufferSize(), NULL, &modelShader.vShader);
+        device->CreatePixelShader(modelShader.psBlob->GetBufferPointer(), modelShader.psBlob->GetBufferSize(), NULL, &modelShader.pShader);
+    }
+
     // textured screen-aligned quad shader
     {
-        auto hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "VSMain", "vs_4_0", compileFlags, 0, &quadCompositeShader.vsBlob, &errorBlob);
+        auto hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "VSMain", "vs_4_0", 0, 0, &quadCompositeShader.vsBlob, &errorBlob);
         if (FAILED(hr))
         {
             if (errorBlob)
@@ -889,7 +1062,7 @@ void InitD3D(HWND hWnd)
             exit(-1);
         }
 
-        hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "GSMain", "gs_4_0", compileFlags, 0, &quadCompositeShader.gsBlob, &errorBlob);
+        hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "GSMain", "gs_4_0", 0, 0, &quadCompositeShader.gsBlob, &errorBlob);
         if (FAILED(hr))
         {
             if (errorBlob)
@@ -901,7 +1074,7 @@ void InitD3D(HWND hWnd)
             exit(-1);
         }
 
-        hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "PSMain", "ps_4_0", compileFlags, 0, &quadCompositeShader.psBlob, &errorBlob);
+        hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "PSMain", "ps_4_0", 0, 0, &quadCompositeShader.psBlob, &errorBlob);
         if (FAILED(hr))
         {
             if (errorBlob)
@@ -919,8 +1092,23 @@ void InitD3D(HWND hWnd)
         device->CreatePixelShader(quadCompositeShader.psBlob->GetBufferPointer(), quadCompositeShader.psBlob->GetBufferSize(), NULL, &quadCompositeShader.pShader);
     }
 
+    // compute shaders
     {
-        auto hr = D3DCompileFromFile(L"shaders/computeShader.hlsl", 0, 0, "main", "cs_5_0", compileFlags, 0, &computeShader.csBlob, &errorBlob);
+        auto hr = D3DCompileFromFile(L"shaders/thresholddownsample.hlsl", 0, 0, "ThresholdAndDownsample", "cs_5_0", 0, 0, &thresholdDownsampleShader.csBlob, &errorBlob);
+        if (FAILED(hr))
+        {
+            if (errorBlob)
+            {
+                OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+                errorBlob->Release();
+            }
+
+            exit(-1);
+        }
+        device->CreateComputeShader(thresholdDownsampleShader.csBlob->GetBufferPointer(), thresholdDownsampleShader.csBlob->GetBufferSize(), NULL, &thresholdDownsampleShader.cShader);
+    }
+    {
+        auto hr = D3DCompileFromFile(L"shaders/computeShader.hlsl", 0, 0, "main", "cs_5_0", 0, 0, &computeShader.csBlob, &errorBlob);
         if (FAILED(hr))
         {
             if (errorBlob)
@@ -933,15 +1121,60 @@ void InitD3D(HWND hWnd)
         }
         device->CreateComputeShader(computeShader.csBlob->GetBufferPointer(), computeShader.csBlob->GetBufferSize(), NULL, &computeShader.cShader);
     }
-    
+    /*
+    auto hr = D3DCompileFromFile(L"shaders/vertexShader.hlsl", 0, 0, "VSMain", "vs_5_0", 0, 0, &testShader.vsBlob, &errorBlob);
+    if (FAILED(hr))
+    {
+        if (errorBlob)
+        {
+            OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+            errorBlob->Release();
+        }
+
+        exit(-1);
+    }
+    hr = D3DCompileFromFile(L"shaders/pixelShader.hlsl", 0, 0, "PSMain", "ps_5_0", 0, 0, &testShader.psBlob, &errorBlob);
+    if (FAILED(hr))
+    {
+        if (errorBlob)
+        {
+            OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+            errorBlob->Release();
+        }
+
+        exit(-1);
+    }
+
+    device->CreateVertexShader(testShader.vsBlob->GetBufferPointer(), testShader.vsBlob->GetBufferSize(), NULL, &testShader.vShader);
+    device->CreatePixelShader(testShader.psBlob->GetBufferPointer(), testShader.psBlob->GetBufferSize(), NULL, &testShader.pShader);
+
+    hr = D3DCompileFromFile(L"shaders/computeShader.hlsl", 0, 0, "CSMain", "cs_5_0", 0, 0, &testComputeShader.csBlob, &errorBlob);
+    if (FAILED(hr))
+    {
+        if (errorBlob)
+        {
+            OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+            errorBlob->Release();
+        }
+
+        exit(-1);
+    }
+    device->CreateComputeShader(testComputeShader.csBlob->GetBufferPointer(), testComputeShader.csBlob->GetBufferSize(), NULL, &testComputeShader.cShader);
+    */
 }
 
 void ShutdownD3D()
 {
-
+    thresholdDownsampleShader.csBlob->Release();
+    thresholdDownsampleShader.cShader->Release();
 
     computeShader.csBlob->Release();
     computeShader.cShader->Release();
+
+    modelShader.vShader->Release();
+    modelShader.pShader->Release();
+    modelShader.vsBlob->Release();
+    modelShader.psBlob->Release();
 
     quadCompositeShader.vShader->Release();
     quadCompositeShader.gShader->Release();

@@ -79,11 +79,6 @@ struct GSOutput
     float3 n1 : TEXCOORD5;
     float3 posWS : TEXCOORD6;
 };
-/*
-struct GSOutput
-{
-	float4 position : SV_POSITION;
-};*/
 
 void construct_billboard_for_line(float4 posA, float4 posB, float radA, float radB, float4 eyePos, float4 camDir, float4 posAPre, float4 posBSuc, float4 colA, float4 colB, inout TriangleStream<GSOutput> outputStream)
 {
@@ -91,42 +86,54 @@ void construct_billboard_for_line(float4 posA, float4 posB, float radA, float ra
     float3 x1 = posB.xyz;
     float r0 = radA;
     float r1 = radB;
+	
     if (r0 > r1) {
         x0 = posB.xyz;
         x1 = posA.xyz;
         r0 = radB;
         r1 = radA;
     }
+	
     float3 e = eyePos.xyz;
     float3 d = x1 - x0;
     float3 d0 = e - x0;
     float3 d1 = e - x1;
+	
     float3 u = normalize(cross(d, d0));
     float3 v0 = normalize(cross(u, d0));
     float3 v1 = normalize(cross(u, d1));
-    float t0 = sqrt(dot(d0, d0) - r0 * r0);
+	
+    float t0 = sqrt(length(d0)*length(d0) - r0*r0);
     float s0 = r0 / t0;
     float r0s = length(d0) * s0;
-    float t1 = sqrt(dot(d1, d1) - r1 * r1);
+	
+    float t1 = sqrt(length(d1)*length(d1) - r1*r1);
     float s1 = r1 / t1;
     float r1s = length(d1) * s1;
+	
     float3 p0 = x0 + r0s * v0;
     float3 p1 = x0 - r0s * v0;
     float3 p2 = x1 + r1s * v1;
     float3 p3 = x1 - r1s * v1;
+	
     float sm = max(s0, s1);
     float r0ss = length(d0) * sm;
     float r1ss = length(d1) * sm;
+	
     float3 v = camDir.xyz;
     float3 w = cross(u, v);
     float a0 = dot(normalize(p0 - e), normalize(w));
     float a2 = dot(normalize(p2 - e), normalize(w));
+	
     float3 ps = (a0 <= a2) ? p0 : p2;
     float rs = (a0 <= a2) ? r0ss : r1ss;
+	
     float a1 = dot(normalize(p1 - e), normalize(w));
     float a3 = dot(normalize(p3 - e), normalize(w));
+	
     float3 pe = (a1 <= a3) ? p3 : p1;
     float re = (a1 <= a3) ? r1ss : r0ss;
+	
     float3 c0 = ps - rs * u;
     float3 c1 = ps + rs * u;
     float3 c2 = pe - re * u;
@@ -263,8 +270,8 @@ void GSMain(lineadj VertexOutput input[4], inout TriangleStream<GSOutput> output
         colA, colB,
         outputStream
     );
-	/*
-	GSOutput output;
+	
+	/*GSOutput output;
 
     for (int i = 0; i < 4; i++)
     {
@@ -281,11 +288,179 @@ void GSMain(lineadj VertexOutput input[4], inout TriangleStream<GSOutput> output
 	
 }
 
-// pixel shader
-float4 PSMain(GSOutput p) : SV_TARGET
-{
-    // output: tex0 + coefficient * tex1
-	//float x = float((kBuffer[p.position.x].x*kBuffer[p.position.x].y)/1024.f);
-	//float y = float((kBuffer[p.position.y].x*kBuffer[p.position.y].y)/768.f);
-    return float4(1,0,1,1); //mad(coefficient, , tex0.Sample(texSampler, p.tex));
+//pixel shader
+
+uint listPos(uint i, GSOutput input) {
+    uint2 coord = uint2(input.position.xy);
+    uint3 imgSize = uint3(uboMatricesAndUserInput.kBufferInfo.xyz);
+    return coord.x + coord.y * imgSize.x + i * (imgSize.x * imgSize.y);
+}
+
+float4 iRoundedCone(float3 ro, float3 rd, float3 pa, float3 pb, float ra, float rb) {
+    float3  ba = pb - pa;
+	float3  oa = ro - pa;
+	float3  ob = ro - pb;
+    float rr = ra - rb;
+    float m0 = dot(ba,ba);
+    float m1 = dot(ba,oa);
+    float m2 = dot(ba,rd);
+    float m3 = dot(rd,oa);
+    float m5 = dot(oa,oa);
+	float m6 = dot(ob,rd);
+    float m7 = dot(ob,ob);
+    
+    float d2 = m0-rr*rr;
+    
+	float k2 = d2 - m2*m2;
+    float k1 = d2*m3 - m1*m2 + m2*rr*ra;
+    float k0 = d2*m5 - m1*m1 + m1*rr*ra*2.0 - m0*ra*ra;
+    
+	float h = k1*k1 - k0*k2;
+	if(h < 0.0) return float4(-1.0,-1.0,-1.0,-1.0);
+    float t = (-sqrt(h)-k1)/k2;
+    if( t<0.0 ) return float4(-1.0,-1.0,-1.0,-1.0);
+
+    float y = m1 - ra*rr + t*m2;
+    if( y>0.0 && y<d2 ) 
+    {
+        return float4(t, normalize( d2*(oa + t*rd)-ba*y) );
+    }
+
+    // Caps. I feel this can be done with a single square root instead of two
+    float h1 = m3*m3 - m5 + ra*ra;
+    float h2 = m6*m6 - m7 + rb*rb;
+    if( max(h1,h2)<0.0 ) return float4(-1.0,-1.0,-1.0,-1.0);
+    
+    float4 r = float4(1e20,1e20,1e20,1e20);
+    if( h1>0.0 )
+    {        
+    	t = -m3 - sqrt( h1 );
+        r = float4( t, (oa+t*rd)/ra );
+    }
+	if( h2>0.0 )
+    {
+    	t = -m6 - sqrt( h2 );
+        if( t<r.x )
+        r = float4( t, (ob+t*rd)/rb );
+    }
+    return r;
+}
+
+float get_distance_from_plane(float3 points, float4 planes) {
+    return dot(planes.xyz, points.xyz) - planes.w;
+}
+
+float3 calc_blinn_phong_contribution(float3 toLight, float3 toEye, float3 normal, float3 diffFactor, float3 specFactor, float specShininess) {
+    float nDotL = max(0.0, dot(normal, toLight)); // lambertian coefficient
+	float3 h = normalize(toLight + toEye);
+	float nDotH = max(0.0, dot(normal, h));
+	float specPower = pow(nDotH, specShininess);
+	float3 diffuse = diffFactor * nDotL; // component-wise product
+	float3 specular = specFactor * specPower;
+	return diffuse + specular;
+}
+
+float3 calculate_illumination(float3 albedo, float3 eyePos, float3 fragPos, float3 fragNorm, GSOutput input) {
+    float4 mMaterialLightReponse = uboMatricesAndUserInput.mMaterialLightReponse;
+    float3 dirColor = uboMatricesAndUserInput.mDirLightColor.rgb;
+    float3 ambient = mMaterialLightReponse.x * input.color.rgb;
+    float3 diff = mMaterialLightReponse.y * input.color.rgb;
+    float3 spec = mMaterialLightReponse.zzz;
+    float shini = mMaterialLightReponse.w;
+
+    float3 ambientIllumination = ambient * uboMatricesAndUserInput.mAmbLightColor.rgb;
+    
+    float3 toLightDirWS = -uboMatricesAndUserInput.mDirLightDirection.xyz;
+    float3 toEyeNrmWS = normalize(eyePos - fragPos);
+    float3 diffAndSpecIllumination = dirColor * calc_blinn_phong_contribution(toLightDirWS, toEyeNrmWS, fragNorm, diff, spec, shini);
+
+    return ambientIllumination + diffAndSpecIllumination;
+}
+
+uint2 pack(float depth, float4 color) {
+    uint packedColor = f32tof16(color.x) | (f32tof16(color.y) << 16);
+    return (uint2)packedColor | ((uint2)asuint(depth) << 32);
+}
+
+void unpack(uint2 data, out float depth, out float4 color) {
+    uint packedColor = (uint)data;
+    color.x = f16tof32(packedColor & 0xFFFF);
+    color.y = f16tof32(packedColor >> 16);
+    color.zw = float2(0, 1);
+    depth = asfloat((uint)(data >> 32));
+}
+
+float4 PSMain(GSOutput input) : SV_TARGET {
+    /*uint2 coord = uint2(input.position.xy);
+
+    float3 camWS = uboMatricesAndUserInput.mCamPos.xyz;
+    float3 viewRayWS = normalize(input.viewRay.xyz);
+
+    float4 tnor = iRoundedCone(camWS, viewRayWS, input.posA, input.posB, input.rArB.x, input.rArB.y);
+    float3 posWsOnCone = camWS + viewRayWS * tnor.x;
+	//return tnor;//float4(posWsOnCone,1.0);
+    if (uboMatricesAndUserInput.mBillboardClippingEnabled) {
+        //if (tnor.x <= 0.0) discard;
+        
+        float4 plane1 = float4(input.n0, dot(input.posA, input.n0));
+        float4 plane2 = float4(input.n1, dot(input.posB, input.n1));
+        float dp1 = get_distance_from_plane(posWsOnCone, plane1);
+        float dp2 = get_distance_from_plane(posWsOnCone, plane2);
+        //if (dp1 > 0 || dp2 > 0) discard;
+    }
+	
+    float3 illumination = input.color.rgb;
+    if (uboMatricesAndUserInput.mBillboardShadingEnabled) {
+        illumination = calculate_illumination(input.color.rgb, camWS, posWsOnCone, tnor.yzw, input);
+    }
+    float4 color = float4(illumination * input.color.a, 1 - input.color.a);
+
+    uint2 value = pack(input.position.z, color);
+
+    bool insert = true;
+    if (value.x > kBuffer[listPos(int(uboMatricesAndUserInput.kBufferInfo.z) - 1, input)].x) {
+        insert = false;
+    } else if (value.x == kBuffer[listPos(int(uboMatricesAndUserInput.kBufferInfo.z) - 1, input)].x && value.y > kBuffer[listPos(int(uboMatricesAndUserInput.kBufferInfo.z) - 1, input)].y){
+		insert = false;
+	}
+	
+	float4 unpackedColor;
+	float alpha;
+	float4 outColor;
+    if (insert) {
+        for (uint i = 0; i < uint(uboMatricesAndUserInput.kBufferInfo.z); ++i) {
+            uint2 old;
+            //InterlockedMin(kBuffer[listPos(i, input)].x, value.x, old.x);
+			if(kBuffer[listPos(i, input)].x>value.x){
+				old = value;
+			} else if(kBuffer[listPos(i, input)].x==value.x&&kBuffer[listPos(i, input)].y > value.y){
+				old = value;
+			} else if(kBuffer[listPos(i, input)].x==value.x&&kBuffer[listPos(i, input)].y < value.y) {
+				old = kBuffer[listPos(i, input)];
+			}
+			else {
+				old = kBuffer[listPos(i, input)];
+			}
+
+            if (old.x == 0xFFFFFFFF && old.y == 0xFFFFFFFF) {
+                break;
+            }
+            value = max(old, value);
+
+            if (i == ((uboMatricesAndUserInput.kBufferInfo.z) - 1)) {
+                if (value.x != 0xFFFFFFFF || value.y != 0xFFFFFFFF ) {
+                    float depth;
+                    
+                    unpack(value, depth, unpackedColor);
+
+                    alpha = 1 - unpackedColor.a;
+                    outColor = float4(unpackedColor.xyz / alpha, alpha);
+                } else {
+                    discard;
+                }
+            }
+        }
+    }*/
+	return float4(1,0,1,1);
+    //return outColor;
 }
