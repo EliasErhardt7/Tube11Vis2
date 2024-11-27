@@ -2,11 +2,29 @@
 
 #include <array>
 #include <vector>
+#include <DirectXMath.h>
 
 struct VertexPosNormal
 {
     float x, y, z;      // position
     float nx, ny, nz;   // normal
+};
+
+
+struct VertexData
+{
+    DirectX::XMFLOAT3 position;
+    float data;
+    float curvature;
+};
+
+constexpr std::array<VertexData, 6> VertexTube = {
+    VertexData{ DirectX::XMFLOAT3(-1.f,  1.f, 0.f), 0.f, 0.f},
+    VertexData{ DirectX::XMFLOAT3(1.f, -1.f, 0.f), 1.f, 1.f },
+    VertexData{ DirectX::XMFLOAT3(-1.f, -1.f, 0.f), 0.f, 1.f },
+    VertexData{ DirectX::XMFLOAT3(-1.f,  1.f, 0.f), 0.f, 0.f },
+    VertexData{ DirectX::XMFLOAT3(1.f,  1.f, 0.f), 1.f, 0.f },
+    VertexData{ DirectX::XMFLOAT3(1.f, -1.f, 0.f), 1.f, 1.f }
 };
 
 struct VertexPosTexCoord

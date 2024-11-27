@@ -1,20 +1,26 @@
-struct Vertex {
-    float3 position : POSITION;
-    float3 color : COLOR;
+#define WORKGROUP_SIZE 16
+
+// represents 2 times uint_32
+
+RWStructuredBuffer<uint2> kBuffer : register(u0);
+
+cbuffer MatricesAndUserInput : register(b0)
+{
+    float4 kBufferInfo;
 };
 
-RWStructuredBuffer<Vertex> vertices : register(u0);
+[numthreads(WORKGROUP_SIZE, WORKGROUP_SIZE, 1)]
+void main(uint3 dispatchID : SV_DispatchThreadID)
+{
+	int2 coord = int2(dispatchID.xy);
+    int3 imgSize = int3(kBufferInfo.xyz);
 
-[numthreads(1, 1, 1)]
-void CSMain(uint3 DTid : SV_DispatchThreadID) {
-    float time = DTid.x * 0.1;
-    float3 positions[8] = {
-        float3(-1, -1, -1), float3(1, -1, -1), float3(1, 1, -1), float3(-1, 1, -1),
-        float3(-1, -1, 1), float3(1, -1, 1), float3(1, 1, 1), float3(-1, 1, 1)
-    };
-    
-    // Apply a simple pulsating animation
-    float scale = 1.0 + 0.2 * sin(time);
-    vertices[DTid.x].position = positions[DTid.x] * scale;
-    vertices[DTid.x].color = normalize(positions[DTid.x]) * 0.5 + 0.5;
+    if (coord.x >= imgSize.x || coord.y >= imgSize.y)
+        return;
+
+    for (int i = 0; i < imgSize.z; ++i)
+    {
+        uint index = coord.x + coord.y * imgSize.x + i * (imgSize.x * imgSize.y);
+        kBuffer[index] = uint2(index, index); //0xFFFFFFFFu, 0xFFFFFFFFu
+    }
 }

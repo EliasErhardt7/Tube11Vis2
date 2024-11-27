@@ -54,3 +54,13 @@ XMMATRIX Camera::GetViewMatrix()
 {
     return XMMatrixLookToLH(position, forward, up);
 }
+
+XMVECTOR Camera::GetPosition()
+{ 
+	return position;
+}
+
+XMVECTOR Camera::GetForward()
+{
+	return forward;
+}

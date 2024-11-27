@@ -18,6 +18,8 @@ public:
 	void RotateCamera(float dx, float dy);
 	void RotateY(float angle);
 	void InitializeMouse(HWND window);
+	XMVECTOR GetPosition();
+	XMVECTOR GetForward();
 	XMMATRIX GetViewMatrix();
 
 	

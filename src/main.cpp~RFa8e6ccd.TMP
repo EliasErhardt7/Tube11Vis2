@@ -84,31 +84,6 @@ ID3D11Buffer* computeConstantBuffer;
 
 ID3D11Buffer* compositionConstantBuffer;
 
-bool mBillboardClippingEnabled = true;
-bool mBillboardShadingEnabled = true;
-
-XMVECTOR mDirLightDirection = { -0.7F, -0.6F, -0.3F, 0.0F };
-XMVECTOR mDirLightColor = { 1.0F, 1.0F, 1.0F, 1.0F };
-float mDirLightIntensity = 1.0F;
-XMVECTOR mAmbLightColor = { 0.05F, 0.05F, 0.05F, 1.0F };
-XMVECTOR mMaterialReflectivity= { 0.5, 1.0, 0.5, 32.0 };
-
-int mVertexColorMode = 0;
-XMVECTOR mVertexColorStatic = { 65.0F / 255.0F, 105.0F / 255.0F, 225.0F / 255.0F, 1.f };
-XMVECTOR mVertexColorMin = { 1.0F / 255.0F, 169.0F / 255.0F, 51.0F / 255.0F, 1.f };
-XMVECTOR mVertexColorMax = { 1.0F, 0.0F, 0.0F, 1.f };
-
-int mVertexAlphaMode = 0;
-bool mVertexAlphaInvert = false;
-float mVertexAlphaStatic = 0.5;
-XMVECTOR mVertexAlphaBounds = { 0.2, 0.8 , 0.0, 0.f};
-
-int mVertexRadiusMode = 0;
-bool mVertexRadiusInvert = false;
-float mVertexRadiusStatic = 0.001;
-XMVECTOR mVertexRadiusBounds = { 0.0005, 0.002, 0.0, 0.0 };
-
-long mRenderCallCount = 0;
 int mkBufferLayer = 8;
 
 //
@@ -383,50 +358,11 @@ void RenderFrame()
 
     //deviceContext->PSSetSamplers(0, 1, &defaultSamplerState);
 
-    matrices_and_user_input uni;
-    uni.mViewMatrix = transforms.view;
-    uni.mProjMatrix = transforms.proj;
-    uni.mCamPos = camera.GetPosition();
-    uni.mCamDir = camera.GetForward();
-    XMVECTOR color = XMVectorSet(1.0f, 1.0f, 1.0f, 1.0f);
-    uni.mClearColor = color;
-    XMVECTOR colorHelper = XMVectorSet(64.0f / 255.0f, 224.0f / 255.0f, 208.0f / 255.0f, 1.0f);
-    uni.mHelperLineColor = colorHelper;
-    uni.mkBufferInfo = XMVectorSet(WIDTH, HEIGHT, mkBufferLayer, 0);
-    uni.mDirLightDirection = mDirLightDirection;
-    uni.mDirLightColor = mDirLightIntensity * mDirLightColor;
-    uni.mAmbLightColor = mAmbLightColor;
-    uni.mMaterialLightReponse = mMaterialReflectivity;
-    uni.mBillboardClippingEnabled = mBillboardClippingEnabled;
-    uni.mBillboardShadingEnabled = mBillboardShadingEnabled;
-    uni.mVertexColorMode = mVertexColorMode;
-    if (mVertexColorMode == 0)
-        uni.mVertexColorMin = mVertexColorStatic;
-    else {
-        uni.mVertexColorMin = mVertexColorMin;
-        uni.mVertexColorMax = mVertexColorMax;
-    }
-    uni.mVertexAlphaMode = mVertexAlphaMode;
-    if (mVertexAlphaMode == 0)
-        uni.mVertexAlphaBounds = mVertexAlphaBounds;//uni.mVertexAlphaBounds[0] = mVertexAlphaStatic;
-    else
-        uni.mVertexAlphaBounds = mVertexAlphaBounds;
-
-    uni.mVertexRadiusMode = mVertexRadiusMode;
-    if (mVertexRadiusMode == 0)
-        uni.mVertexRadiusBounds = mVertexRadiusBounds;//uni.mVertexRadiusBounds[0] = mVertexRadiusStatic;
-    else
-        uni.mVertexRadiusBounds = mVertexRadiusBounds;
-    uni.mDataMaxLineLength = 1.f;
-    uni.mDataMaxVertexAdjacentLineLength = 1.f;
-    uni.mVertexAlphaInvert = mVertexAlphaInvert;
-    uni.mVertexRadiusInvert = mVertexRadiusInvert;
-
-
+    CompositeParams compParams = { 0.75f };
     {
         D3D11_MAPPED_SUBRESOURCE ms;
         deviceContext->Map(compositionConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
-        memcpy(ms.pData, &uni, sizeof(matrices_and_user_input));
+        memcpy(ms.pData, &compParams, sizeof(CompositeParams));
         deviceContext->Unmap(compositionConstantBuffer, 0);
     }
     deviceContext->PSSetConstantBuffers(0, 1, &compositionConstantBuffer);
@@ -746,7 +682,7 @@ void InitRenderData()
             {"TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0}
         };
 
-        result = device->CreateInputLayout(ied, 3, quadCompositeShader.vsBlob->GetBufferPointer(), quadCompositeShader.vsBlob->GetBufferSize(), &vertexTubeMesh.vertexLayout);
+        result = device->CreateInputLayout(ied, 2, quadCompositeShader.vsBlob->GetBufferPointer(), quadCompositeShader.vsBlob->GetBufferSize(), &vertexTubeMesh.vertexLayout);
         if (FAILED(result))
         {
             std::cerr << "Failed to create screen aligned quad input layout\n";
@@ -790,7 +726,7 @@ void InitRenderData()
         D3D11_BUFFER_DESC bd;
         ZeroMemory(&bd, sizeof(CD3D11_BUFFER_DESC));
 
-        bd.ByteWidth = sizeof(matrices_and_user_input);
+        bd.ByteWidth = sizeof(CompositeParams);
         bd.Usage = D3D11_USAGE_DYNAMIC;
         bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
