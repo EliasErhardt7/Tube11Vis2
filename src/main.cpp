@@ -304,7 +304,7 @@ void RenderFrame()
     deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
     
     deviceContext->VSSetShader(quadCompositeShader.vShader, 0, 0);
-    //deviceContext->GSSetShader(quadCompositeShader.gShader, 0, 0);
+    deviceContext->GSSetShader(quadCompositeShader.gShader, 0, 0);
     deviceContext->PSSetShader(quadCompositeShader.pShader, 0, 0);
 
     deviceContext->IASetInputLayout(vertexTubeMesh.vertexLayout);
@@ -363,7 +363,7 @@ void RenderFrame()
         deviceContext->Unmap(compositionConstantBuffer, 0);
     }
     deviceContext->VSSetConstantBuffers(0, 1, &compositionConstantBuffer);
-    //deviceContext->GSSetConstantBuffers(0, 1, &compositionConstantBuffer);
+    deviceContext->GSSetConstantBuffers(0, 1, &compositionConstantBuffer);
     deviceContext->PSSetConstantBuffers(0, 1, &compositionConstantBuffer);
 
     deviceContext->Draw(vertexTubeMesh.vertexCount, 0);
@@ -831,7 +831,7 @@ void InitD3D(HWND hWnd)
 
             exit(-1);
         }
-        /*
+
         hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "GSMain", "gs_4_0", compileFlags, 0, &quadCompositeShader.gsBlob, &errorBlob);
         if (FAILED(hr))
         {
@@ -842,7 +842,7 @@ void InitD3D(HWND hWnd)
             }
 
             exit(-1);
-        }*/
+        }
 
         hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "PSMain", "ps_4_0", compileFlags, 0, &quadCompositeShader.psBlob, &errorBlob);
         if (FAILED(hr))
@@ -858,7 +858,7 @@ void InitD3D(HWND hWnd)
 
         // encapsulate both shaders into shader objects
         device->CreateVertexShader(quadCompositeShader.vsBlob->GetBufferPointer(), quadCompositeShader.vsBlob->GetBufferSize(), NULL, &quadCompositeShader.vShader);
-        //device->CreateGeometryShader(quadCompositeShader.gsBlob->GetBufferPointer(), quadCompositeShader.gsBlob->GetBufferSize(), NULL, &quadCompositeShader.gShader);
+        device->CreateGeometryShader(quadCompositeShader.gsBlob->GetBufferPointer(), quadCompositeShader.gsBlob->GetBufferSize(), NULL, &quadCompositeShader.gShader);
         device->CreatePixelShader(quadCompositeShader.psBlob->GetBufferPointer(), quadCompositeShader.psBlob->GetBufferSize(), NULL, &quadCompositeShader.pShader);
     }
 
