@@ -11,6 +11,15 @@ struct VertexPosNormal
 };
 
 
+constexpr std::array<DirectX::XMFLOAT3, 6> LineTube = {
+    DirectX::XMFLOAT3(-1.f,  1.0f, 0.f),
+    DirectX::XMFLOAT3(1.f, -1.f, 0.f),
+    DirectX::XMFLOAT3(-1.f, -1.f, 0.f),
+    DirectX::XMFLOAT3(-1.f,  1.f, 0.f),
+    DirectX::XMFLOAT3(1.f,  1.f, 0.f),
+    DirectX::XMFLOAT3(1.f, -1.f, 0.f)
+};
+
 struct VertexData
 {
     DirectX::XMFLOAT3 position;
@@ -18,13 +27,18 @@ struct VertexData
     float curvature;
 };
 
-constexpr std::array<VertexData, 6> VertexTube = {
-    VertexData{ DirectX::XMFLOAT3(-0.f,  1.5f, 0.f), 0.5f, 0.f},
-    VertexData{ DirectX::XMFLOAT3(1.f, -1.f, 0.f), 1.f, 1.f },
-    VertexData{ DirectX::XMFLOAT3(-1.5f, -1.f, 0.f), 5.f, 1.5f },
-    VertexData{ DirectX::XMFLOAT3(-1.f,  1.f, 0.5f), 0.f, 7.f },
-    VertexData{ DirectX::XMFLOAT3(1.f,  1.5f, 0.f), 4.f, 0.f },
-    VertexData{ DirectX::XMFLOAT3(1.5f, -1.f, 0.f), 1.f, 1.f }
+constexpr std::array<VertexData, 8> VertexTube = {
+    VertexData{ DirectX::XMFLOAT3(-0.5f, -0.5f, -0.5f), 0.5f, 0.f},
+    VertexData{ DirectX::XMFLOAT3(0.5f, -0.5f, -0.5f), 1.f, 1.f },
+    VertexData{ DirectX::XMFLOAT3(0.5f,  0.5f, -0.5f), 0.f, 7.f },
+    VertexData{ DirectX::XMFLOAT3(-0.5f,  0.5f, -0.5f), 5.f, 1.5f },
+    
+
+    VertexData{ DirectX::XMFLOAT3(-0.5f, -0.5f,  0.5f), 0.5f, 0.f},
+    VertexData{ DirectX::XMFLOAT3(0.5f, -0.5f,  0.5f), 1.f, 1.f },
+    VertexData{ DirectX::XMFLOAT3(0.5f,  0.5f, 0.5f), 0.f, 7.f },
+    VertexData{ DirectX::XMFLOAT3(-0.5f,  0.5f,  0.5f), 5.f, 1.5f },
+    
 };
 
 struct VertexPosTexCoord

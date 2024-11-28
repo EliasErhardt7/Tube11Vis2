@@ -43,6 +43,7 @@ ShaderProgram testShader;
 ComputeShader testComputeShader;
 ShaderProgram modelShader;
 ShaderProgram quadCompositeShader;
+ShaderProgram linesShader;
 ComputeShader thresholdDownsampleShader;
 ComputeShader computeShader;
 
@@ -65,6 +66,7 @@ ID3D11RasterizerState* defaultRasterizerState;
 Mesh objModelMesh;
 Mesh screenAlignedQuadMesh;
 Mesh vertexTubeMesh;
+Mesh lineTubeMesh;
 
 // model, view, and projection transform
 Transformations transforms;
@@ -185,7 +187,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     InitD3D(hWnd);
 
     InitRenderData();
-    camera.InitializeMouse(hWnd);
+
     // main loop
     timer.Start();
 
@@ -271,6 +273,10 @@ void RenderFrame()
     constexpr ID3D11UnorderedAccessView* NULL_UAV = nullptr;
     constexpr UINT NO_OFFSET = -1;
 
+    float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };  // Black background
+    deviceContext->ClearRenderTargetView(backbuffer, clearColor);
+    deviceContext->ClearDepthStencilView(depthStencilTarget.dsView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+
     deviceContext->CSSetShader(computeShader.cShader, 0, 0);
     std::array<ID3D11UnorderedAccessView*, 1> csUAVs = { storageTargets[0].unorderedAccessView };
     ID3D11UnorderedAccessView* kBuffer = storageTargets[0].unorderedAccessView;
@@ -294,11 +300,11 @@ void RenderFrame()
 
         deviceContext->CSSetUnorderedAccessViews(0, 1, &NULL_UAV, &NO_OFFSET);
     }
-
+    
     deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
-
+    
     deviceContext->VSSetShader(quadCompositeShader.vShader, 0, 0);
-    deviceContext->GSSetShader(quadCompositeShader.gShader, 0, 0);
+    //deviceContext->GSSetShader(quadCompositeShader.gShader, 0, 0);
     deviceContext->PSSetShader(quadCompositeShader.pShader, 0, 0);
 
     deviceContext->IASetInputLayout(vertexTubeMesh.vertexLayout);
@@ -356,6 +362,8 @@ void RenderFrame()
         memcpy(ms.pData, &uni, sizeof(matrices_and_user_input));
         deviceContext->Unmap(compositionConstantBuffer, 0);
     }
+    deviceContext->VSSetConstantBuffers(0, 1, &compositionConstantBuffer);
+    //deviceContext->GSSetConstantBuffers(0, 1, &compositionConstantBuffer);
     deviceContext->PSSetConstantBuffers(0, 1, &compositionConstantBuffer);
 
     deviceContext->Draw(vertexTubeMesh.vertexCount, 0);
@@ -363,6 +371,19 @@ void RenderFrame()
     //unbind SRVs
     deviceContext->PSSetShaderResources(0, 1, &NULL_SRV);
 
+    // LINES SHADER
+    /*
+    deviceContext->VSSetShader(linesShader.vShader, 0, 0);
+    deviceContext->PSSetShader(linesShader.pShader, 0, 0);
+
+    deviceContext->IASetInputLayout(lineTubeMesh.vertexLayout);
+    deviceContext->IASetVertexBuffers(0, 1, &lineTubeMesh.vertexBuffer, &lineTubeMesh.stride, &lineTubeMesh.offset);
+    deviceContext->IASetPrimitiveTopology(lineTubeMesh.topology);
+
+    deviceContext->VSSetConstantBuffers(0, 1, &compositionConstantBuffer);
+    deviceContext->PSSetConstantBuffers(0, 1, &compositionConstantBuffer);
+
+    deviceContext->Draw(lineTubeMesh.vertexCount, 0);*/
     // switch the back buffer and the front buffer
     swapchain->Present(0, 0);
 }
@@ -370,81 +391,7 @@ void RenderFrame()
 void InitRenderData()
 {
     HRESULT result = S_OK;
-    // initialize render targets
-    // half res for RT 1 and RT 2, while RT 0 has full resolution
-    const UINT widths[NUM_RENDERTARGETS] = { WIDTH, WIDTH / 2, WIDTH / 2 };
-    const UINT heights[NUM_RENDERTARGETS] = { HEIGHT, HEIGHT / 2, HEIGHT / 2 };
 
-    for (UINT32 i = 0; i < NUM_RENDERTARGETS; ++i)
-    {
-        RenderTarget& renderTarget = renderTargets[i];
-
-        D3D11_TEXTURE2D_DESC textureDesc;
-        D3D11_RENDER_TARGET_VIEW_DESC renderTargetViewDesc;
-        D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
-        D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
-
-        ZeroMemory(&textureDesc, sizeof(D3D11_TEXTURE2D_DESC));
-        ZeroMemory(&renderTargetViewDesc, sizeof(D3D11_RENDER_TARGET_VIEW_DESC));
-        ZeroMemory(&srvDesc, sizeof(D3D11_SHADER_RESOURCE_VIEW_DESC));
-        ZeroMemory(&uavDesc, sizeof(D3D11_UNORDERED_ACCESS_VIEW_DESC));
-
-        // 1. Create texture
-        textureDesc.Width = widths[i];
-        textureDesc.Height = heights[i];
-        textureDesc.MipLevels = 1;
-        textureDesc.ArraySize = 1;
-        textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        textureDesc.SampleDesc.Count = 1;
-        textureDesc.Usage = D3D11_USAGE_DEFAULT;
-        textureDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
-        textureDesc.CPUAccessFlags = 0;
-        textureDesc.MiscFlags = 0;
-
-        result = device->CreateTexture2D(&textureDesc, NULL, &renderTarget.renderTargetTexture);
-        if (FAILED(result))
-        {
-            std::cerr << "Failed to create render target texture\n";
-            exit(-1);
-        }
-
-        // 2. Create render target view
-        renderTargetViewDesc.Format = textureDesc.Format;
-        renderTargetViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-        renderTargetViewDesc.Texture2D.MipSlice = 0;
-
-        result = device->CreateRenderTargetView(renderTarget.renderTargetTexture, &renderTargetViewDesc, &renderTarget.renderTargetView);
-        if (FAILED(result))
-        {
-            std::cerr << "Failed to create render target view\n";
-            exit(-1);
-        }
-
-        // 3. Create SRV
-        srvDesc.Format = textureDesc.Format;
-        srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-        srvDesc.Texture2D.MostDetailedMip = 0;
-        srvDesc.Texture2D.MipLevels = 1;
-
-        result = device->CreateShaderResourceView(renderTarget.renderTargetTexture, &srvDesc, &renderTarget.shaderResourceView);
-        if (FAILED(result))
-        {
-            std::cerr << "Failed to create render target texture SRV\n";
-            exit(-1);
-        }
-
-        // 4. Create UAV
-        uavDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
-        uavDesc.Texture2D.MipSlice = 0;
-
-        result = device->CreateUnorderedAccessView(renderTarget.renderTargetTexture, &uavDesc, &renderTarget.unorderedAccessView);
-        if (FAILED(result))
-        {
-            std::cerr << "Failed to create render target texture UAV\n";
-            exit(-1);
-        }
-    }
 
     // ----------------------- STORAGE TARGET --------------------------------------------
     {
@@ -570,11 +517,11 @@ void InitRenderData()
         ZeroMemory(&rasterDesc, sizeof(D3D11_RASTERIZER_DESC));
 
         rasterDesc.AntialiasedLineEnable = false;
-        rasterDesc.CullMode = D3D11_CULL_BACK;
+        rasterDesc.CullMode = D3D11_CULL_NONE;
         rasterDesc.DepthBias = 0;
         rasterDesc.DepthBiasClamp = 0.0f;
         rasterDesc.DepthClipEnable = true;
-        rasterDesc.FillMode = D3D11_FILL_SOLID;
+        rasterDesc.FillMode = D3D11_FILL_WIREFRAME;
         rasterDesc.FrontCounterClockwise = false;
         rasterDesc.MultisampleEnable = false;
         rasterDesc.ScissorEnable = false;
@@ -634,15 +581,75 @@ void InitRenderData()
         vertexTubeMesh.vertexCount = static_cast<UINT>(VertexTube.size());
         vertexTubeMesh.stride = static_cast<UINT>(sizeof(VertexData));
         vertexTubeMesh.offset = 0;
-        vertexTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_LINELIST_ADJ;
+        vertexTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP_ADJ;
+    }
+    /* {
+        D3D11_RASTERIZER_DESC rasterDesc;
+        ZeroMemory(&rasterDesc, sizeof(D3D11_RASTERIZER_DESC));
+        rasterDesc.FillMode = D3D11_FILL_WIREFRAME;
+        rasterDesc.CullMode = D3D11_CULL_BACK;
+        rasterDesc.FrontCounterClockwise = FALSE;
+        rasterDesc.DepthClipEnable = TRUE;
+
+        ID3D11RasterizerState* pRasterState;
+        result = device->CreateRasterizerState(&rasterDesc, &pRasterState);
+        if (FAILED(result))
+        {
+            std::cerr << "Failed to create rasterizer state\n";
+            exit(-1);
+        }
+        deviceContext->RSSetState(pRasterState);
+    }*/
+    // initialize line helper
+    {
+        D3D11_BUFFER_DESC bd;
+        ZeroMemory(&bd, sizeof(D3D11_BUFFER_DESC));
+
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.ByteWidth = static_cast<UINT>(sizeof(XMFLOAT3) * LineTube.size());
+
+        bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+        // create the buffer
+        result = device->CreateBuffer(&bd, NULL, &lineTubeMesh.vertexBuffer);
+        if (FAILED(result))
+        {
+            std::cerr << "Failed to create screen aligned quad vertex buffer\n";
+            exit(-1);
+        }
+
+        // copy vertex data to buffer
+        D3D11_MAPPED_SUBRESOURCE ms;
+        deviceContext->Map(lineTubeMesh.vertexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
+        memcpy(ms.pData, LineTube.data(), sizeof(XMFLOAT3) * LineTube.size());
+        deviceContext->Unmap(lineTubeMesh.vertexBuffer, NULL);
+
+        // create input vertex layout
+        D3D11_INPUT_ELEMENT_DESC ied[] =
+        {
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0}
+        };
+
+        result = device->CreateInputLayout(ied, 1, linesShader.vsBlob->GetBufferPointer(), linesShader.vsBlob->GetBufferSize(), &lineTubeMesh.vertexLayout);
+        if (FAILED(result))
+        {
+            std::cerr << "Failed to create screen aligned quad input layout\n";
+            exit(-1);
+        }
+
+        lineTubeMesh.vertexCount = static_cast<UINT>(LineTube.size());
+        lineTubeMesh.stride = static_cast<UINT>(sizeof(XMFLOAT3));
+        lineTubeMesh.offset = 0;
+        lineTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP_ADJ;
     }
 
     // initialize transforms
-    {
-        transforms.model = DirectX::XMMatrixIdentity();
-        transforms.view = DirectX::XMMatrixIdentity();
-        transforms.proj = DirectX::XMMatrixIdentity();
-    }
+    //{
+        //transforms.model = DirectX::XMMatrixIdentity();
+        //transforms.view = DirectX::XMMatrixIdentity();
+        //transforms.proj = DirectX::XMMatrixIdentity();
+    //}
 
     // create transformation constant buffer
     {
@@ -682,77 +689,6 @@ void InitRenderData()
         }
     }
 
-    //default texture sampler
-    {
-        D3D11_SAMPLER_DESC sampDesc = { };
-        sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-        sampDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
-        sampDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
-        sampDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
-        sampDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
-        sampDesc.MinLOD = 0;
-        sampDesc.MaxLOD = 1;
-
-        result = device->CreateSamplerState(&sampDesc, &defaultSamplerState);
-        if (FAILED(result))
-        {
-            std::cerr << "Failed to create texture sampler\n";
-            exit(-1);
-        }
-    }
-
-    // Material and light source
-    {
-        // light values are updated during UpdateTick()
-        lightSource.lightPosition = DirectX::XMFLOAT4(1.f, 1.f, 1.f, 1.f);
-        lightSource.lightColorAndPower = DirectX::XMFLOAT4(1.f, 1.f, 1.f, 1.f);
-
-        material.ambient = DirectX::XMFLOAT4(0.f, 0.f, 0.f, 1.f);
-        material.diffuse = DirectX::XMFLOAT4(1.f, 1.f, 1.f, 1.f);
-        material.specularAndShininess = DirectX::XMFLOAT4(0.5f, 0.5f, 0.5f, 24.f);
-
-        {
-            D3D11_BUFFER_DESC bd;
-            ZeroMemory(&bd, sizeof(CD3D11_BUFFER_DESC));
-
-            bd.ByteWidth = sizeof(LightSource);
-            bd.Usage = D3D11_USAGE_DYNAMIC;
-            bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-            bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-
-            // create the buffer
-            result = device->CreateBuffer(&bd, NULL, &lightSourceConstantBuffer);
-            if (FAILED(result))
-            {
-                std::cerr << "Failed to create light source constant buffer\n";
-                exit(-1);
-            }
-        }
-
-        {
-            D3D11_BUFFER_DESC bd;
-            ZeroMemory(&bd, sizeof(CD3D11_BUFFER_DESC));
-
-            bd.ByteWidth = sizeof(Material);
-            bd.Usage = D3D11_USAGE_DYNAMIC;
-            bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-            bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-
-            // create the buffer
-            result = device->CreateBuffer(&bd, NULL, &materialConstantBuffer);
-            if (FAILED(result))
-            {
-                std::cerr << "Failed to create material constant buffer\n";
-                exit(-1);
-            }
-
-            D3D11_MAPPED_SUBRESOURCE ms;
-            deviceContext->Map(materialConstantBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
-            memcpy(ms.pData, &material, sizeof(Material));
-            deviceContext->Unmap(materialConstantBuffer, NULL);
-        }
-    }
-
     // compute kBufferInfo parameter
     {
         computeInfo.kBufferInfo = DirectX::XMFLOAT4(WIDTH,HEIGHT,mkBufferLayer,0);
@@ -776,6 +712,7 @@ void InitRenderData()
     }
 
     // set the viewport (note: since this does not change, it is sufficient to do this once)
+    /*
     D3D11_VIEWPORT viewport = { };
     viewport.TopLeftX = 0;
     viewport.TopLeftY = 0;
@@ -784,7 +721,13 @@ void InitRenderData()
     viewport.MinDepth = 0.f;
     viewport.MaxDepth = 1.f;
 
+    deviceContext->RSSetViewports(1, &viewport);*/
+
+    D3D11_VIEWPORT viewport = { 0.0f, 0.0f, static_cast<float>(WIDTH), static_cast<float>(HEIGHT), 0.0f, 1.0f };
     deviceContext->RSSetViewports(1, &viewport);
+
+    D3D11_RECT scissorRect = { 0, 0, WIDTH, HEIGHT };
+    deviceContext->RSSetScissorRects(1, &scissorRect);
 }
 
 void CleanUpRenderData()
@@ -820,10 +763,10 @@ void CleanUpRenderData()
     {
         RenderTarget& renderTarget = renderTargets[i];
 
-        renderTarget.unorderedAccessView->Release();
-        renderTarget.shaderResourceView->Release();
-        renderTarget.renderTargetView->Release();
-        renderTarget.renderTargetTexture->Release();
+        //renderTarget.unorderedAccessView->Release();
+        //renderTarget.shaderResourceView->Release();
+        //renderTarget.renderTargetView->Release();
+        //renderTarget.renderTargetTexture->Release();
     }
 }
 
@@ -888,7 +831,7 @@ void InitD3D(HWND hWnd)
 
             exit(-1);
         }
-
+        /*
         hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "GSMain", "gs_4_0", compileFlags, 0, &quadCompositeShader.gsBlob, &errorBlob);
         if (FAILED(hr))
         {
@@ -899,7 +842,7 @@ void InitD3D(HWND hWnd)
             }
 
             exit(-1);
-        }
+        }*/
 
         hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "PSMain", "ps_4_0", compileFlags, 0, &quadCompositeShader.psBlob, &errorBlob);
         if (FAILED(hr))
@@ -915,7 +858,7 @@ void InitD3D(HWND hWnd)
 
         // encapsulate both shaders into shader objects
         device->CreateVertexShader(quadCompositeShader.vsBlob->GetBufferPointer(), quadCompositeShader.vsBlob->GetBufferSize(), NULL, &quadCompositeShader.vShader);
-        device->CreateGeometryShader(quadCompositeShader.gsBlob->GetBufferPointer(), quadCompositeShader.gsBlob->GetBufferSize(), NULL, &quadCompositeShader.gShader);
+        //device->CreateGeometryShader(quadCompositeShader.gsBlob->GetBufferPointer(), quadCompositeShader.gsBlob->GetBufferSize(), NULL, &quadCompositeShader.gShader);
         device->CreatePixelShader(quadCompositeShader.psBlob->GetBufferPointer(), quadCompositeShader.psBlob->GetBufferSize(), NULL, &quadCompositeShader.pShader);
     }
 
@@ -934,6 +877,37 @@ void InitD3D(HWND hWnd)
         device->CreateComputeShader(computeShader.csBlob->GetBufferPointer(), computeShader.csBlob->GetBufferSize(), NULL, &computeShader.cShader);
     }
     
+    // helper lines
+    {
+        auto hr = D3DCompileFromFile(L"shaders/2dlines.hlsl", 0, 0, "VSMain", "vs_4_0", compileFlags, 0, &linesShader.vsBlob, &errorBlob);
+        if (FAILED(hr))
+        {
+            if (errorBlob)
+            {
+                OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+                errorBlob->Release();
+            }
+
+            exit(-1);
+        }
+
+        hr = D3DCompileFromFile(L"shaders/2dlines.hlsl", 0, 0, "PSMain", "ps_4_0", compileFlags, 0, &linesShader.psBlob, &errorBlob);
+        if (FAILED(hr))
+        {
+            if (errorBlob)
+            {
+                OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+                errorBlob->Release();
+            }
+
+            exit(-1);
+        }
+
+        // encapsulate both shaders into shader objects
+        device->CreateVertexShader(linesShader.vsBlob->GetBufferPointer(), linesShader.vsBlob->GetBufferSize(), NULL, &linesShader.vShader);
+        device->CreatePixelShader(linesShader.psBlob->GetBufferPointer(), linesShader.psBlob->GetBufferSize(), NULL, &linesShader.pShader);
+    }
+
 }
 
 void ShutdownD3D()
