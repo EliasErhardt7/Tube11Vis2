@@ -108,8 +108,8 @@ XMVECTOR mVertexAlphaBounds = { 0.5, 0.8 , 0.0, 0.f};
 
 int mVertexRadiusMode = 0;
 bool mVertexRadiusInvert = false;
-float mVertexRadiusStatic = 0.001;
-XMVECTOR mVertexRadiusBounds = { 0.001, 0.002, 0.0, 0.0 };
+float mVertexRadiusStatic = 0.1;
+XMVECTOR mVertexRadiusBounds = { 0.1, 0.002, 0.0, 0.0 };
 
 long mRenderCallCount = 0;
 int mkBufferLayer = 8;
@@ -350,8 +350,8 @@ void RenderFrame()
         uni.mVertexRadiusBounds = mVertexRadiusBounds;//uni.mVertexRadiusBounds[0] = mVertexRadiusStatic;
     else
         uni.mVertexRadiusBounds = mVertexRadiusBounds;
-    uni.mDataMaxLineLength = 1.f;
-    uni.mDataMaxVertexAdjacentLineLength = 1.f;
+    uni.mDataMaxLineLength = 10.f;
+    uni.mDataMaxVertexAdjacentLineLength = 10.f;
     uni.mVertexAlphaInvert = mVertexAlphaInvert;
     uni.mVertexRadiusInvert = mVertexRadiusInvert;
 
@@ -521,7 +521,7 @@ void InitRenderData()
         rasterDesc.DepthBias = 0;
         rasterDesc.DepthBiasClamp = 0.0f;
         rasterDesc.DepthClipEnable = true;
-        rasterDesc.FillMode = D3D11_FILL_WIREFRAME;
+        rasterDesc.FillMode = D3D11_FILL_SOLID;
         rasterDesc.FrontCounterClockwise = false;
         rasterDesc.MultisampleEnable = false;
         rasterDesc.ScissorEnable = false;
