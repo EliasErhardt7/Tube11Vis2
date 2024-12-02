@@ -222,7 +222,7 @@ void GSMain(lineadj VertexOutput input[4], inout TriangleStream<GSOutput> output
     float radA = 0.0;
     float radB = 0.0;
     
-     // Color calculation
+    // Color calculation
     if (uboMatricesAndUserInput.mVertexColorMode == 0) {
         colA.rgb = uboMatricesAndUserInput.mVertexColorMin.rgb;
         colB.rgb = uboMatricesAndUserInput.mVertexColorMin.rgb;
@@ -256,9 +256,13 @@ void GSMain(lineadj VertexOutput input[4], inout TriangleStream<GSOutput> output
 //pixel shader
 
 uint listPos(uint i, GSOutput input) {
-    uint2 coord = uint2(input.position.xy);
-    uint3 imgSize = uint3(uboMatricesAndUserInput.kBufferInfo.xyz);
-    return coord.x + coord.y * imgSize.x + i * (imgSize.x * imgSize.y);
+    int2 coord = int2(input.position.xy);
+    int3 imgSize = int3(uboMatricesAndUserInput.kBufferInfo.xyz);
+	
+	//if (coord.x >= imgSize.x || coord.y >= imgSize.y)
+    //    return 0;
+		
+    return coord.x + coord.y * (imgSize.x) + i * (imgSize.x * imgSize.y);
 }
 
 float4 iRoundedCone(float3 ro, float3 rd, float3 pa, float3 pb, float ra, float rb) {
@@ -342,17 +346,33 @@ float3 calculate_illumination(float3 albedo, float3 eyePos, float3 fragPos, floa
     return ambientIllumination + diffAndSpecIllumination;
 }
 
+uint packUnorm4x8(float4 v)
+{
+    uint4 scale = uint4(255.0f, 255.0f, 255.0f, 255.0f);
+    uint4 rounded = uint4(round(saturate(v) * scale));
+    return rounded.x | (rounded.y << 8) | (rounded.z << 16) | (rounded.w << 24);
+}
+
 uint2 pack(float depth, float4 color) {
-    uint packedColor = f32tof16(color.x) | (f32tof16(color.y) << 16);
-    return (uint2)packedColor | ((uint2)asuint(depth) << 32);
+
+	uint2 packedColor = uint2(packUnorm4x8(color), asuint(depth));
+	return packedColor;
+}
+
+float4 unpackUnorm4x8(uint packedValue)
+{
+    return float4(
+        (packedValue & 0xFF) / 255.0f,
+        ((packedValue >> 8) & 0xFF) / 255.0f,
+        ((packedValue >> 16) & 0xFF) / 255.0f,
+        (packedValue >> 24) / 255.0f
+    );
 }
 
 void unpack(uint2 data, out float depth, out float4 color) {
-    uint packedColor = (uint)data;
-    color.x = f16tof32(packedColor & 0xFFFF);
-    color.y = f16tof32(packedColor >> 16);
-    color.zw = float2(0, 1);
-    depth = asfloat((uint)(data >> 32));
+
+	color=unpackUnorm4x8(data.x);
+	depth=asfloat(data.y);
 }
 
 float4 PSMain(GSOutput input) : SV_TARGET {
@@ -363,7 +383,7 @@ float4 PSMain(GSOutput input) : SV_TARGET {
 
     float4 tnor = iRoundedCone(camWS, viewRayWS, input.posA, input.posB, input.rArB.x, input.rArB.y);
     float3 posWsOnCone = camWS + viewRayWS * tnor.x;
-	//return tnor;//float4(posWsOnCone,1.0);
+
     if (uboMatricesAndUserInput.mBillboardClippingEnabled) {
         if (tnor.x <= 0.0) discard;
         
@@ -379,7 +399,7 @@ float4 PSMain(GSOutput input) : SV_TARGET {
         illumination = calculate_illumination(input.color.rgb, camWS, posWsOnCone, tnor.yzw, input);
     }
     float4 color = float4(illumination * input.color.a, 1 - input.color.a);
-
+	//return color;
     uint2 value = pack(input.position.z, color);
 
     bool insert = true;
@@ -389,10 +409,13 @@ float4 PSMain(GSOutput input) : SV_TARGET {
 		insert = false;
 	}
 	
+
+	
 	float4 unpackedColor;
 	float alpha;
 	float4 outColor = float4(1,1,1,1);
     if (insert) {
+		//outColor = float4(1,0,1,1);
         for (uint i = 0; i < uint(uboMatricesAndUserInput.kBufferInfo.z); ++i) {
             uint2 old;
             //InterlockedMin(kBuffer[listPos(i, input)].x, value.x, old.x);
@@ -407,17 +430,20 @@ float4 PSMain(GSOutput input) : SV_TARGET {
 				old = kBuffer[listPos(i, input)];
 			}
 
-            if (old.x == 0xFFFFFFFF && old.y == 0xFFFFFFFF) {
+            if (old.x == 0xFFFFFFFFu && old.y == 0xFFFFFFFFu) {
+				
                 break;
             }
             value = max(old, value);
-
+			
             if (i == ((uboMatricesAndUserInput.kBufferInfo.z) - 1)) {
-                if (value.x != 0xFFFFFFFF || value.y != 0xFFFFFFFF ) {
+				
+                if (value.x != 0xFFFFFFFFu || value.y != 0xFFFFFFFFu ) {
+					
                     float depth;
                     
                     unpack(value, depth, unpackedColor);
-
+					
                     alpha = 1 - unpackedColor.a;
                     outColor = float4(unpackedColor.xyz / alpha, alpha);
                 } else {
@@ -426,7 +452,12 @@ float4 PSMain(GSOutput input) : SV_TARGET {
             }
         }
     }
-
+	//float depth;
+                    
+	//unpack(value, depth, unpackedColor);
+	
+	//alpha = 1 - unpackedColor.a;
+	//outColor = float4(unpackedColor.xyz / alpha, alpha);
 	return outColor;
 	
 }

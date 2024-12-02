@@ -44,6 +44,7 @@ ComputeShader testComputeShader;
 ShaderProgram modelShader;
 ShaderProgram quadCompositeShader;
 ShaderProgram linesShader;
+ShaderProgram resolveShader;
 ComputeShader thresholdDownsampleShader;
 ComputeShader computeShader;
 
@@ -113,6 +114,7 @@ XMVECTOR mVertexRadiusBounds = { 0.1, 0.002, 0.0, 0.0 };
 
 long mRenderCallCount = 0;
 int mkBufferLayer = 8;
+int mkBufferLayerCount = 16;
 
 //
 ///////////////////////
@@ -253,7 +255,7 @@ void UpdateTick(float deltaTime)
     transforms.view = DirectX::XMMatrixTranspose(camera.GetViewMatrix());
 
     // Update projection transform (unchanged)
-    transforms.proj = DirectX::XMMatrixTranspose(DirectX::XMMatrixPerspectiveFovLH(1.0f, static_cast<float>(WIDTH) / static_cast<float>(HEIGHT), 0.02f, 100.f));
+    transforms.proj = DirectX::XMMatrixTranspose(DirectX::XMMatrixPerspectiveFovLH(DirectX::XMConvertToRadians(60.0f), static_cast<float>(WIDTH) / static_cast<float>(HEIGHT), 0.001f, 100.f));
 
     // Update model transform (rotation)
     constexpr float millisecondsToAngle = 0.0001f * 6.28f;
@@ -300,9 +302,10 @@ void RenderFrame()
 
         deviceContext->CSSetUnorderedAccessViews(0, 1, &NULL_UAV, &NO_OFFSET);
     }
-    
-    deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
-    
+    deviceContext->OMSetRenderTargets(1, &backbuffer, depthStencilTarget.dsView);
+    //deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
+    deviceContext->OMSetDepthStencilState(depthStencilStateWithDepthTest, 0);
+
     deviceContext->VSSetShader(quadCompositeShader.vShader, 0, 0);
     deviceContext->GSSetShader(quadCompositeShader.gShader, 0, 0);
     deviceContext->PSSetShader(quadCompositeShader.pShader, 0, 0);
@@ -354,8 +357,6 @@ void RenderFrame()
     uni.mDataMaxVertexAdjacentLineLength = 10.f;
     uni.mVertexAlphaInvert = mVertexAlphaInvert;
     uni.mVertexRadiusInvert = mVertexRadiusInvert;
-
-
     {
         D3D11_MAPPED_SUBRESOURCE ms;
         deviceContext->Map(compositionConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
@@ -371,6 +372,27 @@ void RenderFrame()
     //unbind SRVs
     deviceContext->PSSetShaderResources(0, 1, &NULL_SRV);
 
+    // RESOLVE KBUFFER
+
+    deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
+   
+
+    deviceContext->VSSetShader(resolveShader.vShader, 0, 0);
+    deviceContext->GSSetShader(NULL, 0, 0);
+    deviceContext->PSSetShader(resolveShader.pShader, 0, 0);
+
+    deviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    deviceContext->PSSetShaderResources(0, 1, &compositeSRVs[0]);
+
+    deviceContext->PSSetConstantBuffers(0, 1, &compositionConstantBuffer);
+
+    deviceContext->Draw(6, 0);
+
+    //unbind SRVs
+    deviceContext->PSSetShaderResources(0, 1, &NULL_SRV);
+
+
     // LINES SHADER
     /*
     deviceContext->VSSetShader(linesShader.vShader, 0, 0);
@@ -385,7 +407,7 @@ void RenderFrame()
 
     deviceContext->Draw(lineTubeMesh.vertexCount, 0);*/
     // switch the back buffer and the front buffer
-    swapchain->Present(0, 0);
+    swapchain->Present(1, 0);
 }
 
 void InitRenderData()
@@ -403,7 +425,7 @@ void InitRenderData()
         ZeroMemory(&srvDesc, sizeof(D3D11_SHADER_RESOURCE_VIEW_DESC));
         ZeroMemory(&uavDesc, sizeof(D3D11_UNORDERED_ACCESS_VIEW_DESC));
 
-        bufferDesc.ByteWidth = WIDTH * HEIGHT * sizeof(UINT64);
+        bufferDesc.ByteWidth = WIDTH * HEIGHT * sizeof(UINT64)*mkBufferLayerCount;
         bufferDesc.Usage = D3D11_USAGE_DEFAULT;
         bufferDesc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
         bufferDesc.CPUAccessFlags = 0;
@@ -420,7 +442,7 @@ void InitRenderData()
         srvDesc.Format = DXGI_FORMAT_UNKNOWN;
         srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
         srvDesc.Buffer.FirstElement = 0;
-        srvDesc.Buffer.NumElements = WIDTH * HEIGHT;
+        srvDesc.Buffer.NumElements = WIDTH * HEIGHT * mkBufferLayerCount;
         
         result = device->CreateShaderResourceView(storageTargets[0].structuredBuffer, &srvDesc, &storageTargets[0].shaderResourceView);
         if (FAILED(result))
@@ -432,7 +454,7 @@ void InitRenderData()
         uavDesc.Format = DXGI_FORMAT_UNKNOWN;
         uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
         uavDesc.Buffer.FirstElement = 0;
-        uavDesc.Buffer.NumElements = WIDTH * HEIGHT;
+        uavDesc.Buffer.NumElements = WIDTH * HEIGHT * mkBufferLayerCount;
 
         result = device->CreateUnorderedAccessView(storageTargets[0].structuredBuffer, &uavDesc, &storageTargets[0].unorderedAccessView);
         if (FAILED(result))
@@ -481,6 +503,7 @@ void InitRenderData()
             std::cerr << "Failed to create depth/stencil view\n";
             exit(-1);
         }
+
     }
 
     // initialize depth-stencil state
@@ -491,7 +514,7 @@ void InitRenderData()
         dsDesc.DepthEnable = true;
         dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
         dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
-        dsDesc.StencilEnable = false;
+        //dsDesc.StencilEnable = true;
 
         result = device->CreateDepthStencilState(&dsDesc, &depthStencilStateWithDepthTest);
         if (FAILED(result))
@@ -643,6 +666,52 @@ void InitRenderData()
         lineTubeMesh.offset = 0;
         lineTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP_ADJ;
     }
+    /*
+    // initialize resolve shader
+    {
+        D3D11_BUFFER_DESC bd;
+        ZeroMemory(&bd, sizeof(D3D11_BUFFER_DESC));
+
+        bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.ByteWidth = static_cast<UINT>(sizeof(VertexData) * VertexTube.size());
+
+        bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+        // create the buffer
+        result = device->CreateBuffer(&bd, NULL, &vertexTubeMesh.vertexBuffer);
+        if (FAILED(result))
+        {
+            std::cerr << "Failed to create screen aligned quad vertex buffer\n";
+            exit(-1);
+        }
+
+        // copy vertex data to buffer
+        D3D11_MAPPED_SUBRESOURCE ms;
+        deviceContext->Map(vertexTubeMesh.vertexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
+        memcpy(ms.pData, VertexTube.data(), sizeof(VertexData) * VertexTube.size());
+        deviceContext->Unmap(vertexTubeMesh.vertexBuffer, NULL);
+
+        // create input vertex layout
+        D3D11_INPUT_ELEMENT_DESC ied[] =
+        {
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0}
+        };
+
+        result = device->CreateInputLayout(ied, 0, resolveShader.vsBlob->GetBufferPointer(), resolveShader.vsBlob->GetBufferSize(), &vertexTubeMesh.vertexLayout);
+        if (FAILED(result))
+        {
+            std::cerr << "Failed to create screen aligned quad input layout\n";
+            exit(-1);
+        }
+
+        vertexTubeMesh.vertexCount = static_cast<UINT>(VertexTube.size());
+        vertexTubeMesh.stride = static_cast<UINT>(sizeof(VertexData));
+        vertexTubeMesh.offset = 0;
+        vertexTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP_ADJ;
+    }*/
 
     // initialize transforms
     //{
@@ -691,7 +760,7 @@ void InitRenderData()
 
     // compute kBufferInfo parameter
     {
-        computeInfo.kBufferInfo = DirectX::XMFLOAT4(WIDTH,HEIGHT,mkBufferLayer,0);
+        computeInfo.kBufferInfo = XMVectorSet(WIDTH,HEIGHT,mkBufferLayer,0);
     }
     {
         D3D11_BUFFER_DESC bd;
@@ -734,12 +803,12 @@ void CleanUpRenderData()
 {
     // states
     defaultRasterizerState->Release();
-    defaultSamplerState->Release();
+    //defaultSamplerState->Release();
 
     // constant buffers
     transformConstantBuffer->Release();
-    lightSourceConstantBuffer->Release();
-    materialConstantBuffer->Release();
+    //lightSourceConstantBuffer->Release();
+    //materialConstantBuffer->Release();
 
     compositionConstantBuffer->Release();
     computeConstantBuffer->Release();
@@ -877,6 +946,37 @@ void InitD3D(HWND hWnd)
         device->CreateComputeShader(computeShader.csBlob->GetBufferPointer(), computeShader.csBlob->GetBufferSize(), NULL, &computeShader.cShader);
     }
     
+    // resolve Shader
+    {
+        auto hr = D3DCompileFromFile(L"shaders/resolveShader.hlsl", 0, 0, "VSMain", "vs_4_0", compileFlags, 0, &resolveShader.vsBlob, &errorBlob);
+        if (FAILED(hr))
+        {
+            if (errorBlob)
+            {
+                OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+                errorBlob->Release();
+            }
+
+            exit(-1);
+        }
+
+        hr = D3DCompileFromFile(L"shaders/resolveShader.hlsl", 0, 0, "PSMain", "ps_4_0", compileFlags, 0, &resolveShader.psBlob, &errorBlob);
+        if (FAILED(hr))
+        {
+            if (errorBlob)
+            {
+                OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+                errorBlob->Release();
+            }
+
+            exit(-1);
+        }
+
+        // encapsulate both shaders into shader objects
+        device->CreateVertexShader(resolveShader.vsBlob->GetBufferPointer(), resolveShader.vsBlob->GetBufferSize(), NULL, &resolveShader.vShader);
+        device->CreatePixelShader(resolveShader.psBlob->GetBufferPointer(), resolveShader.psBlob->GetBufferSize(), NULL, &resolveShader.pShader);
+    }
+
     // helper lines
     {
         auto hr = D3DCompileFromFile(L"shaders/2dlines.hlsl", 0, 0, "VSMain", "vs_4_0", compileFlags, 0, &linesShader.vsBlob, &errorBlob);

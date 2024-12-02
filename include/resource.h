@@ -216,5 +216,5 @@ struct matrices_and_user_input
 
 struct ComputeInfo
 {
-    DirectX::XMFLOAT4 kBufferInfo;
+    DirectX::XMVECTOR kBufferInfo;
 };
