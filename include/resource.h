@@ -108,12 +108,12 @@ struct matrices_and_user_input
 	/// rgb ... The background color for the background shader
 	/// a   ... The strength of the gradient
 	/// </summary>
-	DirectX::XMVECTOR mClearColor;
+	DirectX::XMFLOAT4 mClearColor;
 	/// <summary>
 	/// rgb ... The color for the 2d helper lines.
 	/// a   ... ignored
 	/// </summary>
-	DirectX::XMVECTOR mHelperLineColor;
+	DirectX::XMFLOAT4 mHelperLineColor;
 	/// <summary>
 	/// contains resx, resy and kbuffer levels
 	/// </summary>

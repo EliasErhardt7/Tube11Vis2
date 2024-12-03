@@ -214,6 +214,27 @@ void construct_billboard_for_line(float4 posA, float4 posB, float radA, float ra
     outputStream.RestartStrip();
 }
 
+uint compute_hash(uint a)
+{
+    a = (a + 0x7ed55d16) + (a << 12);
+    a = (a ^ 0xc761c23c) ^ (a >> 19);
+    a = (a + 0x165667b1) + (a << 5);
+    a = (a + 0xd3a2646c) ^ (a << 9);
+    a = (a + 0xfd7046c5) + (a << 3);
+    a = (a ^ 0xb55a4f09) ^ (a >> 16);
+    return a;
+}
+
+float3 color_from_id_hash(uint a)
+{
+    uint hash = compute_hash(a);
+    return float3(
+        float(hash & 255),
+        float((hash >> 8) & 255),
+        float((hash >> 16) & 255)
+    ) / 255.0f;
+}
+
 [maxvertexcount(4)]
 void GSMain(lineadj VertexOutput input[4], inout TriangleStream<GSOutput> outputStream)
 {
@@ -227,21 +248,59 @@ void GSMain(lineadj VertexOutput input[4], inout TriangleStream<GSOutput> output
         colA.rgb = uboMatricesAndUserInput.mVertexColorMin.rgb;
         colB.rgb = uboMatricesAndUserInput.mVertexColorMin.rgb;
     }
-    // ... (other color mode calculations)
+     else if (uboMatricesAndUserInput.mVertexColorMode == 1) {  // based on data
+        colA.rgb = lerp(uboMatricesAndUserInput.mVertexColorMin.rgb, uboMatricesAndUserInput.mVertexColorMax.rgb, input[1].outData);
+        colB.rgb = lerp(uboMatricesAndUserInput.mVertexColorMin.rgb, uboMatricesAndUserInput.mVertexColorMax.rgb, input[2].outData);
+    } else if (uboMatricesAndUserInput.mVertexColorMode == 2) { // based on length
+        float factor = distance(input[1].position, input[2].position) / uboMatricesAndUserInput.mDataMaxLineLength;
+        colA.rgb = lerp(uboMatricesAndUserInput.mVertexColorMin.rgb, uboMatricesAndUserInput.mVertexColorMax.rgb, factor);
+        colB.rgb = colA.rgb;
+    } else if (uboMatricesAndUserInput.mVertexColorMode == 3) { // based on curvature
+        colA.rgb = lerp(uboMatricesAndUserInput.mVertexColorMin.rgb, uboMatricesAndUserInput.mVertexColorMax.rgb, input[1].outCurvature);
+        colB.rgb = lerp(uboMatricesAndUserInput.mVertexColorMin.rgb, uboMatricesAndUserInput.mVertexColorMax.rgb, input[2].outCurvature);
+    } /*else if (uboMatricesAndUserInput.mVertexColorMode == 4) { // per Polyline
+        //colA.rgb = color_from_id_hash(pushConstants.drawCallIndex);
+        colB.rgb = colA.rgb;
+    } else if (uboMatricesAndUserInput.mVertexColorMode == 5) { // per Line
+        //colA.rgb = color_from_id_hash(gl_PrimitiveIDIn);
+        colB.rgb = colA.rgb;
+    }*/
 
     // Alpha calculation
     if (uboMatricesAndUserInput.mVertexAlphaMode == 0) {
         colA.a = uboMatricesAndUserInput.mVertexAlphaBounds.x;
         colB.a = uboMatricesAndUserInput.mVertexAlphaBounds.x;
     }
-    // ... (other alpha mode calculations)
+    else if (uboMatricesAndUserInput.mVertexAlphaMode == 1) {  // based on data
+        colA.a = lerp(uboMatricesAndUserInput.mVertexAlphaBounds.x, uboMatricesAndUserInput.mVertexAlphaBounds.y, uboMatricesAndUserInput.mVertexAlphaInvert ? 1 - input[1].outData : input[1].outData);
+        colB.a = lerp(uboMatricesAndUserInput.mVertexAlphaBounds.x, uboMatricesAndUserInput.mVertexAlphaBounds.y, uboMatricesAndUserInput.mVertexAlphaInvert ? 1 - input[2].outData : input[2].outData);
+    } else if (uboMatricesAndUserInput.mVertexAlphaMode == 2) { // based on length
+        float factor = distance(input[1].position, input[2].position) / uboMatricesAndUserInput.mDataMaxLineLength;
+        factor = uboMatricesAndUserInput.mVertexAlphaInvert ? 1 - factor : factor;
+        colA.a = lerp(uboMatricesAndUserInput.mVertexAlphaBounds.x, uboMatricesAndUserInput.mVertexAlphaBounds.y, input[1].outData);
+        colB.a = colA.a;
+    } else if (uboMatricesAndUserInput.mVertexAlphaMode == 3) { // based on curvature
+        colA.a = lerp(uboMatricesAndUserInput.mVertexAlphaBounds.x, uboMatricesAndUserInput.mVertexAlphaBounds.y, uboMatricesAndUserInput.mVertexAlphaInvert ? 1 - input[1].outCurvature : input[1].outCurvature);
+        colB.a = lerp(uboMatricesAndUserInput.mVertexAlphaBounds.x, uboMatricesAndUserInput.mVertexAlphaBounds.y, uboMatricesAndUserInput.mVertexAlphaInvert ? 1 - input[2].outCurvature : input[2].outCurvature);
+    }
 
     // Radius calculation
     if (uboMatricesAndUserInput.mVertexRadiusMode == 0) {
         radA = uboMatricesAndUserInput.mVertexRadiusBounds.x;
         radB = uboMatricesAndUserInput.mVertexRadiusBounds.x;
     }
-    // ... (other radius mode calculations)
+    else if (uboMatricesAndUserInput.mVertexRadiusMode == 1) {  // based on data
+        radA = lerp(uboMatricesAndUserInput.mVertexRadiusBounds.x, uboMatricesAndUserInput.mVertexRadiusBounds.y, uboMatricesAndUserInput.mVertexRadiusInvert ? 1 - input[1].outData : input[1].outData);
+        radB = lerp(uboMatricesAndUserInput.mVertexRadiusBounds.x, uboMatricesAndUserInput.mVertexRadiusBounds.y, uboMatricesAndUserInput.mVertexRadiusInvert ? 1 - input[2].outData : input[2].outData);
+    } else if (uboMatricesAndUserInput.mVertexRadiusMode == 2) { // based on length
+        float factor = distance(input[1].position, input[2].position) / uboMatricesAndUserInput.mDataMaxLineLength;
+        factor = uboMatricesAndUserInput.mVertexRadiusInvert ? 1 - factor : factor;
+        radA = lerp(uboMatricesAndUserInput.mVertexRadiusBounds.x, uboMatricesAndUserInput.mVertexRadiusBounds.y, factor);
+        radB = radA;
+    } else if (uboMatricesAndUserInput.mVertexRadiusMode == 3) { // based on curvature
+        radA = lerp(uboMatricesAndUserInput.mVertexRadiusBounds.x, uboMatricesAndUserInput.mVertexRadiusBounds.y, uboMatricesAndUserInput.mVertexRadiusInvert ? 1 - input[1].outCurvature : input[1].outCurvature);
+        radB = lerp(uboMatricesAndUserInput.mVertexRadiusBounds.x, uboMatricesAndUserInput.mVertexRadiusBounds.y, uboMatricesAndUserInput.mVertexRadiusInvert ? 1 - input[2].outCurvature : input[2].outCurvature);
+    }
 	
 	construct_billboard_for_line(
         input[1].position, input[2].position,
@@ -413,9 +472,8 @@ float4 PSMain(GSOutput input) : SV_TARGET {
 	
 	float4 unpackedColor;
 	float alpha;
-	float4 outColor = float4(1,1,1,1);
+	float4 outColor;
     if (insert) {
-		//outColor = float4(1,0,1,1);
         for (uint i = 0; i < uint(uboMatricesAndUserInput.kBufferInfo.z); ++i) {
             uint2 old;
             //InterlockedMin(kBuffer[listPos(i, input)].x, value.x, old.x);
@@ -452,12 +510,7 @@ float4 PSMain(GSOutput input) : SV_TARGET {
             }
         }
     }
-	//float depth;
-                    
-	//unpack(value, depth, unpackedColor);
-	
-	//alpha = 1 - unpackedColor.a;
-	//outColor = float4(unpackedColor.xyz / alpha, alpha);
+
 	return outColor;
 	
 }
