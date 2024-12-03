@@ -27,6 +27,15 @@ struct VertexData
     float curvature;
 };
 
+struct Poly {
+
+    /// <summary>
+    /// The vertices that make up this Polyline
+    /// </summary>
+    std::vector<VertexData> vertices;
+
+};
+
 constexpr std::array<VertexData, 8> VertexTube = {
     VertexData{ DirectX::XMFLOAT3(-0.5f, -0.5f, -0.5f), 0.5f, 0.f},
     VertexData{ DirectX::XMFLOAT3(0.5f, -0.5f, -0.5f), 1.f, 1.f },
@@ -37,6 +46,18 @@ constexpr std::array<VertexData, 8> VertexTube = {
     VertexData{ DirectX::XMFLOAT3(0.5f, -0.5f,  0.5f), 1.f, 1.f },
     VertexData{ DirectX::XMFLOAT3(0.5f,  0.5f, 0.5f), 0.f, 7.f },
     VertexData{ DirectX::XMFLOAT3(-0.5f,  0.5f,  0.5f), 5.f, 1.5f },
+};
+
+struct draw_call_t
+{
+    /// <summary>
+    /// The index of the first vertex inside the buffer array
+    /// </summary>
+    uint32_t firstIndex;
+    /// <summary>
+    /// The number of vertices that belong to this polyline
+    /// </summary>
+    uint32_t numberOfPrimitives;
 };
 
 struct VertexPosTexCoord

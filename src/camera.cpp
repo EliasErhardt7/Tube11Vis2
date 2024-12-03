@@ -2,7 +2,7 @@
 
 Camera::Camera() : position(XMVectorSet(0.0f, 0.4f, 0.75f, 1.0f)),
     forward(XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f)),
-    up(XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)), right(XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f)), yaw(0.0f), pitch(0.0f) {}
+    up(XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)), right(XMVectorSet(-1.0f, 0.0f, 0.0f, 0.0f)), yaw(0.0f), pitch(0.0f) {}
 
 void Camera::MoveForward(float distance) { position += forward * distance; }
 void Camera::MoveRight(float distance) { position += XMVector3Cross(forward, up) * distance; }

@@ -13,6 +13,7 @@
 #pragma comment (lib, "DirectXTK.lib")
 #pragma comment (lib, "d3dcompiler.lib")
 
+#include "Dataset.h"
 #include "geometry.h"
 #include "resource.h"
 #include "util/timer.h"
@@ -20,7 +21,6 @@
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx11.h"
-//#include <imgui.h>
 #include "imfilebrowser.h"
 
 ///////////////////////
@@ -79,7 +79,8 @@ Mesh lineTubeMesh;
 // model, view, and projection transform
 Transformations transforms;
 ID3D11Buffer* transformConstantBuffer;
-
+ID3D11Buffer* mNewVertexBuffer;
+ID3D11Buffer* mVertexBuffer;
 // material and light source
 Material material;
 ID3D11Buffer* materialConstantBuffer;
@@ -97,8 +98,12 @@ ID3D11BlendState* blendState;
 
 ID3D11Buffer* compositionConstantBuffer;
 
+std::unique_ptr<Dataset> mDataset;
+std::vector<draw_call_t> mDrawCalls;
+
 bool mBillboardClippingEnabled = true;
 bool mBillboardShadingEnabled = true;
+bool mReplaceOldBufferWithNextFrame = false;
 
 float mDirLightDirection[3] = { -0.7F, -0.6F, -0.3F };
 float mDirLightColor[4] = { 1.0F, 1.0F, 1.0F, 1.0F };
@@ -151,12 +156,13 @@ void ShutdownD3D(void);
 // Rendering data initialization and clean-up
 void InitRenderData();
 void CleanUpRenderData();
+void loadDatasetFromFile(std::string& filename);
 void renderUI();
 // update tick for render data (e.g., to update transformation matrices)
 void UpdateTick(float deltaTime);
 // rendering
 void RenderFrame();
-
+//void activateImGuiStyle(bool darkMode, float alpha);
 extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 // WindowProc callback function
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -208,12 +214,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		NULL);                      // used with multiple windows, NULL
 
 	ShowWindow(hWnd, nCmdShow);
+	mDataset = std::make_unique<Dataset>();
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-
+	//activateImGuiStyle(false, 0.8);
 	// Setup Dear ImGui style
 	ImGui::StyleColorsDark();
 	InitD3D(hWnd);
@@ -262,6 +269,59 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 	return 0;
 }
+void loadDatasetFromFile(std::string& filename) {
+
+	mDataset->importFromFile(filename);
+
+	std::vector<VertexData> gpuVertexData;
+	mDataset->fillGPUReadyBuffer(gpuVertexData, mDrawCalls);
+
+	// Create new GPU Buffer
+	D3D11_BUFFER_DESC bd;
+	ZeroMemory(&bd, sizeof(D3D11_BUFFER_DESC));
+
+	bd.Usage = D3D11_USAGE_DYNAMIC;
+	bd.ByteWidth = static_cast<UINT>(sizeof(VertexData) * gpuVertexData.size());
+
+	bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+	// create the buffer
+	HRESULT result = device->CreateBuffer(&bd, NULL, &mNewVertexBuffer);
+	if (FAILED(result))
+	{
+		std::cerr << "Failed to create screen aligned quad vertex buffer\n";
+		exit(-1);
+	}
+
+	// copy vertex data to buffer
+	D3D11_MAPPED_SUBRESOURCE ms;
+	deviceContext->Map(mNewVertexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
+	memcpy(ms.pData, gpuVertexData.data(), sizeof(VertexData) * gpuVertexData.size());
+	deviceContext->Unmap(mNewVertexBuffer, NULL);
+
+	// create input vertex layout
+	D3D11_INPUT_ELEMENT_DESC ied[] =
+	{
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+		{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+		{"TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0}
+	};
+
+	result = device->CreateInputLayout(ied, 3, quadCompositeShader.vsBlob->GetBufferPointer(), quadCompositeShader.vsBlob->GetBufferSize(), &vertexTubeMesh.vertexLayout);
+	if (FAILED(result))
+	{
+		std::cerr << "Failed to create screen aligned quad input layout\n";
+		exit(-1);
+	}
+
+	vertexTubeMesh.vertexCount = gpuVertexData.size();
+	vertexTubeMesh.stride = static_cast<UINT>(sizeof(VertexData));
+	vertexTubeMesh.offset = 0;
+	vertexTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP_ADJ;
+
+	mReplaceOldBufferWithNextFrame = true;
+}
 
 void toggleInputMode() {
 
@@ -289,21 +349,22 @@ void UpdateTick(float deltaTime)
 	if (GetAsyncKeyState('S') & 0x8000) camera.MoveForward(-cameraSpeed);
 
 	// Left/Right movement
-	if (GetAsyncKeyState('A') & 0x8000) camera.MoveRight(cameraSpeed);
-	if (GetAsyncKeyState('D') & 0x8000) camera.MoveRight(-cameraSpeed);
+	if (GetAsyncKeyState('A') & 0x8000) camera.MoveRight(-cameraSpeed);
+	if (GetAsyncKeyState('D') & 0x8000) camera.MoveRight(cameraSpeed);
 	// Up/Down movement
 	if (GetAsyncKeyState(VK_SPACE) & 0x8000) camera.MoveUp(cameraSpeed);
 	if (GetAsyncKeyState(VK_SHIFT) & 0x8000) camera.MoveUp(-cameraSpeed);
 
 	// Rotation
-	if (GetAsyncKeyState('E') & 0x8000) camera.RotateY(rotationSpeed);
-	if (GetAsyncKeyState('Q') & 0x8000) camera.RotateY(-rotationSpeed);
+	if (GetAsyncKeyState('E') & 0x8000) camera.RotateY(-rotationSpeed);
+	if (GetAsyncKeyState('Q') & 0x8000) camera.RotateY(rotationSpeed);
 
 	// Update view transform
 	transforms.view = DirectX::XMMatrixTranspose(camera.GetViewMatrix());
 
+
 	// Update projection transform (unchanged)
-	transforms.proj = DirectX::XMMatrixTranspose(DirectX::XMMatrixPerspectiveFovLH(DirectX::XMConvertToRadians(60.0f), static_cast<float>(WIDTH) / static_cast<float>(HEIGHT), 0.001f, 100.f));
+	transforms.proj = DirectX::XMMatrixTranspose(DirectX::XMMatrixPerspectiveFovLH(DirectX::XMConvertToRadians(60.0f), static_cast<float>(-WIDTH) / static_cast<float>(HEIGHT), 0.001f, 100.f));
 
 	// Update model transform (rotation)
 	constexpr float millisecondsToAngle = 0.0001f * 6.28f;
@@ -473,7 +534,7 @@ void renderUI() {
 		if (values.size() > 90) values.erase(values.begin());
 		ImGui::PlotLines(fps.c_str(), values.data(), static_cast<int>(values.size()), 0, nullptr, 0.0f, FLT_MAX, ImVec2(0.0f, 60.0f));
 
-		/*if (mDataset->isFileOpen()) {
+		if (mDataset->isFileOpen()) {
 			if (ImGui::CollapsingHeader("Dataset Information", ImGuiTreeNodeFlags_DefaultOpen)) {
 				ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
 				ImGui::Text("File:             %s", mDataset->getName().c_str());
@@ -490,7 +551,7 @@ void renderUI() {
 				ImGui::Text("Preprocess-Time:  %.3f s", mDataset->getLastPreprocessTime());
 				ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
 			}
-		}*/
+		}
 		ImGui::End();
 	}
 
@@ -499,7 +560,7 @@ void renderUI() {
 		// ToDo Load Data-File into buffer
 		std::string filename = mOpenFileDialog.GetSelected().string();
 		mOpenFileDialog.ClearSelected();
-		// this->loadDatasetFromFile(filename);
+		loadDatasetFromFile(filename);
 	}
 }
 
@@ -570,8 +631,8 @@ void RenderFrame()
 		uni.mVertexRadiusBounds = XMFLOAT4(mVertexRadiusStatic, mVertexRadiusBounds[1], 0, 0);//uni.mVertexRadiusBounds[0] = mVertexRadiusStatic;
 	else
 		uni.mVertexRadiusBounds = XMFLOAT4(mVertexRadiusBounds[0], mVertexRadiusBounds[1], 0, 0);
-	uni.mDataMaxLineLength = 10.f;
-	uni.mDataMaxVertexAdjacentLineLength = 10.f;
+	uni.mDataMaxLineLength = mDataset->getMaxLineLength();
+	uni.mDataMaxVertexAdjacentLineLength = mDataset->getMaxVertexAdjacentLineLength();
 	uni.mVertexAlphaInvert = mVertexAlphaInvert;
 	uni.mVertexRadiusInvert = mVertexRadiusInvert;
 	{
@@ -580,6 +641,12 @@ void RenderFrame()
 		memcpy(ms.pData, &uni, sizeof(matrices_and_user_input));
 		deviceContext->Unmap(compositionConstantBuffer, 0);
 	}
+
+	if (mReplaceOldBufferWithNextFrame) {
+		vertexTubeMesh.vertexBuffer = std::move(mNewVertexBuffer);
+		mReplaceOldBufferWithNextFrame = false;
+	}
+
 	std::array<ID3D11ShaderResourceView*, 1> compositeSRVs = { storageTargets[0].shaderResourceView };
 	deviceContext->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
 	// BACKGROUND
@@ -628,7 +695,7 @@ void RenderFrame()
 	if (mResolveKBuffer) {
 		deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
 
-
+		//deviceContext->IASetVertexBuffers(0, 1, nullptr, 0, 0);
 		deviceContext->VSSetShader(resolveShader.vShader, 0, 0);
 		
 		deviceContext->PSSetShader(resolveShader.pShader, 0, 0);
@@ -828,7 +895,7 @@ void InitRenderData()
 		rasterDesc.DepthBiasClamp = 0.0f;
 		rasterDesc.DepthClipEnable = true;
 		rasterDesc.FillMode = D3D11_FILL_SOLID;
-		rasterDesc.FrontCounterClockwise = false;
+		rasterDesc.FrontCounterClockwise = true;
 		rasterDesc.MultisampleEnable = false;
 		rasterDesc.ScissorEnable = false;
 		rasterDesc.SlopeScaledDepthBias = 0.f;
