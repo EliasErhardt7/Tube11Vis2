@@ -7,7 +7,8 @@
 #include <iostream>
 #include <sstream>
 #include <d3dcompiler.h>
-
+#include <format>
+#include <fmt/core.h>
 #pragma comment (lib, "d3d11.lib")
 #pragma comment (lib, "DirectXTK.lib")
 #pragma comment (lib, "d3dcompiler.lib")
@@ -16,10 +17,15 @@
 #include "resource.h"
 #include "util/timer.h"
 #include "camera.h"
+#include "imgui.h"
+#include "imgui_impl_win32.h"
+#include "imgui_impl_dx11.h"
+//#include <imgui.h>
+#include "imfilebrowser.h"
 
 ///////////////////////
 // global declarations
-
+#define IMGUI_COLLAPSEINDENTWIDTH 20.0F // The width of the coll
 constexpr int WIDTH = 1024;
 constexpr int HEIGHT = 768;
 constexpr size_t NUM_RENDERTARGETS = 3;
@@ -91,31 +97,44 @@ ID3D11Buffer* compositionConstantBuffer;
 bool mBillboardClippingEnabled = true;
 bool mBillboardShadingEnabled = true;
 
-XMVECTOR mDirLightDirection = { -0.7F, -0.6F, -0.3F, 0.0F };
-XMVECTOR mDirLightColor = { 1.0F, 1.0F, 1.0F, 1.0F };
+float mDirLightDirection [3] = {-0.7F, -0.6F, -0.3F};
+float mDirLightColor [4] = {1.0F, 1.0F, 1.0F, 1.0F};
 float mDirLightIntensity = 1.0F;
-XMVECTOR mAmbLightColor = { 0.05F, 0.05F, 0.05F, 1.0F };
-XMVECTOR mMaterialReflectivity= { 0.5, 1.0, 0.5, 32.0 };
+float mAmbLightColor [4] = {0.05F, 0.05F, 0.05F, 1.0F};
+float mMaterialReflectivity [4] = {0.5, 1.0, 0.5, 32.0};
 
 int mVertexColorMode = 0;
-XMVECTOR mVertexColorStatic = { 65.0F / 255.0F, 105.0F / 255.0F, 225.0F / 255.0F, 1.f };
-XMVECTOR mVertexColorMin = { 1.0F / 255.0F, 169.0F / 255.0F, 51.0F / 255.0F, 1.f };
-XMVECTOR mVertexColorMax = { 1.0F, 0.0F, 0.0F, 1.f };
+float mVertexColorStatic[3] = { 65.0F / 255.0F, 105.0F / 255.0F, 225.0F / 255.0F };
+float mVertexColorMin[3] = { 1.0F / 255.0F, 169.0F / 255.0F, 51.0F / 255.0F };
+float mVertexColorMax[3] = { 1.0F, 0.0F, 0.0F };
 
 int mVertexAlphaMode = 0;
 bool mVertexAlphaInvert = false;
 float mVertexAlphaStatic = 0.5;
-XMVECTOR mVertexAlphaBounds = { 0.5, 0.8 , 0.0, 0.f};
+float mVertexAlphaBounds [2] = {0.5, 0.8};
 
 int mVertexRadiusMode = 0;
 bool mVertexRadiusInvert = false;
 float mVertexRadiusStatic = 0.1;
-XMVECTOR mVertexRadiusBounds = { 0.1, 0.002, 0.0, 0.0 };
+float mVertexRadiusBounds[2] = { 0.1, 0.002 };
+float mClearColor[4] = { 1.0F, 1.0F, 1.0F, 0.2F };
+bool mShowStatisticsWindow = true;
+bool mFullscreenModeEnabled = false;
+
+bool mDraw2DHelperLines = false;
+
+float mHelperLineColor[4] = { 64.0f / 255.0f, 224.0f / 255.0f, 208.0f / 255.0f, 1.0f };
+
+bool mMainRenderPassEnabled = true;
+
+bool mResolveKBuffer = true;
 
 long mRenderCallCount = 0;
 int mkBufferLayer = 8;
 int mkBufferLayerCount = 16;
 
+bool mShowUI = true;
+ImGui::FileBrowser mOpenFileDialog;
 //
 ///////////////////////
 
@@ -129,13 +148,13 @@ void ShutdownD3D(void);
 // Rendering data initialization and clean-up
 void InitRenderData();
 void CleanUpRenderData();
-
+void renderUI();
 // update tick for render data (e.g., to update transformation matrices)
 void UpdateTick(float deltaTime);
 // rendering
 void RenderFrame();
 
-
+extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 // WindowProc callback function
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
@@ -149,6 +168,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #if defined(_DEBUG)
     creationFlags |= D3D11_CREATE_DEVICE_DEBUG;
 #endif
+
 
     // window handle and information
     HWND hWnd = nullptr;
@@ -185,8 +205,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         NULL);                      // used with multiple windows, NULL
 
     ShowWindow(hWnd, nCmdShow);
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
     InitD3D(hWnd);
+
+    ImGui_ImplWin32_Init(hWnd);
+    ImGui_ImplDX11_Init(device, deviceContext);
 
     InitRenderData();
 
@@ -218,7 +248,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
             // upate and render
             UpdateTick(elapsedMilliseconds / 1000.0f);
-
+            //renderUI();
             RenderFrame();
         }
     }
@@ -228,6 +258,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ShutdownD3D();
 
     return 0;
+}
+
+void toggleInputMode() {
+    
+}
+
+/// <summary>
+/// Switches between unobstracted fullscreen mode and windowed mode
+/// </summary>
+void toggleFullscreenMode() {
+    if (mFullscreenModeEnabled)
+        //gvk::context().main_window()->switch_to_windowed_mode();
+    //else
+        //gvk::context().main_window()->switch_to_fullscreen_mode();
+    mFullscreenModeEnabled = !mFullscreenModeEnabled;
 }
 
 void UpdateTick(float deltaTime)
@@ -266,6 +311,193 @@ void UpdateTick(float deltaTime)
     DirectX::XMVECTOR lightViewPos = DirectX::XMVector4Transform(lightWorldPos, transforms.view);
     DirectX::XMStoreFloat4(&lightSource.lightPosition, lightViewPos);
     lightSource.lightColorAndPower = DirectX::XMFLOAT4(1.f, 1.f, 0.7f, 4.5f);
+}
+
+void renderUI() {
+    if (!mShowUI) return;
+
+    //auto resolution = gvk::context().main_window()->resolution();
+    ImGui::Begin("Line Renderer - Tool Box", NULL, ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+    ImGui::SetWindowSize(ImVec2(0.0F, HEIGHT + 2.0), ImGuiCond_Always);
+    ImGui::SetWindowPos(ImVec2(-1.0F, -1.0F), ImGuiCond_Once);
+
+    if (ImGui::BeginMenuBar()) {
+        if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("Load Data-File")) {
+                mOpenFileDialog.Open();
+            }
+            if (ImGui::MenuItem("Exit Application", "Esc")) {
+                //gvk::current_composition()->stop(); // exit renderloop
+            }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("UI")) {
+            const char* statButtonText[] = { "Show Statistics", "Hide Statistics" };
+            if (ImGui::MenuItem("Start Camera-Interaction", "F1")) {
+                toggleInputMode();
+            }
+            if (ImGui::MenuItem("Hide Full UI", "F2")) {
+                mShowUI = false;
+            }
+            if (ImGui::MenuItem(statButtonText[mShowStatisticsWindow], "F3")) {
+                mShowStatisticsWindow = !mShowStatisticsWindow;
+            }
+            std::string fullScreenText = mFullscreenModeEnabled ? "Disable Fullscreen-Mode" : "Activate Fullscreen-Mode";
+            if (ImGui::MenuItem(fullScreenText.c_str(), "F11")) {
+                toggleFullscreenMode();
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::EndMenuBar();
+    }
+    
+    if (ImGui::CollapsingHeader("Background", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::PushID("BG");
+        ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
+        ImGui::ColorPicker3("Color", mClearColor, ImGuiColorEditFlags_PickerHueWheel);
+        ImGui::SliderFloat("Gradient", &mClearColor[3], 0.0F, 1.0F);
+        ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
+        ImGui::PopID();
+    }
+    
+    if (ImGui::CollapsingHeader("Debug Properties")) {
+        ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
+        ImGui::Checkbox("Main Render Pass Enabled", &mMainRenderPassEnabled);
+        if (mMainRenderPassEnabled) {
+            ImGui::Checkbox("Billboard-Clipping", &mBillboardClippingEnabled);
+            ImGui::Checkbox("Billboard-Shading", &mBillboardShadingEnabled); // TODO
+        }
+        ImGui::Separator();
+        ImGui::Checkbox("Show Helper Lines", &mDraw2DHelperLines);
+        if (mDraw2DHelperLines) {
+            ImGui::ColorEdit3("Color", mHelperLineColor);
+        }
+        ImGui::Separator();
+        ImGui::Checkbox("Resolve K-Buffer", &mResolveKBuffer);
+        ImGui::SliderInt("Layer", &mkBufferLayer, 1, mkBufferLayerCount);
+        ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
+    }
+    if (ImGui::CollapsingHeader("Vertex Color", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::PushID("VC");
+        ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
+        const char* vertexColorModes[] = { "Static", "Data dependent", "Length dependent", "Curvature dependent", "per Polyline", "per Line" };
+        ImGui::Combo("Mode", &mVertexColorMode, vertexColorModes, IM_ARRAYSIZE(vertexColorModes));
+        if (mVertexColorMode == 0) {
+            ImGui::ColorEdit3("Color", mVertexColorStatic);
+        }
+        else if (mVertexColorMode < 4) {
+            ImGui::ColorEdit3("Min-Color", mVertexColorMin);
+            ImGui::ColorEdit3("Max-Color", mVertexColorMax);
+            if (ImGui::Button("Invert colors")) {
+                float colorBuffer[3];
+                std::copy(mVertexColorMin, mVertexColorMin + 3, colorBuffer);
+                std::copy(mVertexColorMax, mVertexColorMax + 3, mVertexColorMin);
+                std::copy(colorBuffer, colorBuffer + 3, mVertexColorMax);
+            }
+        }
+        ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
+        ImGui::PopID();
+    }
+    if (ImGui::CollapsingHeader("Vertex Transparency", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::PushID("VT");
+        ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
+        const char* vertexAlphaModes[] = { "Static", "Data dependent", "Length dependent", "Curvature dependent" };
+        ImGui::Combo("Mode", &mVertexAlphaMode, vertexAlphaModes, IM_ARRAYSIZE(vertexAlphaModes));
+        if (mVertexAlphaMode == 0) ImGui::SliderFloat("Alpha", &mVertexAlphaStatic, 0.0F, 1.0F);
+        else {
+            ImGui::SliderFloat2("Bounds", mVertexAlphaBounds, 0.0F, 1.0F);
+            ImGui::Checkbox("Invert", &mVertexAlphaInvert);
+        }
+        ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
+        ImGui::PopID();
+    }
+    if (ImGui::CollapsingHeader("Vertex Radius", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::PushID("VR");
+        ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
+        const char* vertexRadiusModes[] = { "Static", "Data dependent", "Length dependent", "Curvature dependent" };
+        ImGui::Combo("Mode", &mVertexRadiusMode, vertexRadiusModes, IM_ARRAYSIZE(vertexRadiusModes));
+        if (mVertexRadiusMode == 0) ImGui::SliderFloat("Alpha", &mVertexRadiusStatic, 0.0F, 1.0F);
+        else {
+            ImGui::SliderFloat2("Bounds", mVertexRadiusBounds, 0.0F, 0.02F, "%.4f");
+            ImGui::Checkbox("Invert", &mVertexRadiusInvert);
+        }
+        ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
+        ImGui::PopID();
+    }
+
+    /*if (ImGui::CollapsingHeader("Camera")) {
+        ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
+        auto camPos = mQuakeCam->translation();
+        auto camDir = mQuakeCam->rotation() * glm::vec3(0, 0, -1);
+        ImGui::Text("Position:  %.3f | %.3f | %.3f", camPos.x, camPos.y, camPos.z);
+        ImGui::Text("Direction: %.3f | %.3f | %.3f", camDir.x, camDir.y, camDir.z);
+        if (ImGui::Button("Reset Camera"))
+            resetCamera();
+        ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
+    }*/
+    if (ImGui::CollapsingHeader("Lighting & Material")) {
+        ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
+        if (ImGui::CollapsingHeader("Ambient Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
+            ImGui::ColorEdit4("Color", mAmbLightColor);
+            ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
+        }
+        if (ImGui::CollapsingHeader("Directional Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
+            ImGui::SliderFloat("Intensity", &mDirLightIntensity, 0.0F, 10.0F);
+            ImGui::ColorEdit4("Color", mDirLightColor);
+            ImGui::SliderFloat3("Direction", mDirLightDirection, -1.0F, 1.0F);
+            ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
+        }
+        if (ImGui::CollapsingHeader("Material Constants", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
+            ImGui::SliderFloat3("Amb/Dif/Spec", mMaterialReflectivity, 0.0F, 3.0F);
+            ImGui::SliderFloat("Shininess", &mMaterialReflectivity[3], 0.0F, 128.0F);
+            ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
+        }
+        ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
+    }
+    ImGui::End();
+
+    if (mShowStatisticsWindow) {
+        ImGui::Begin("Statistics", &mShowStatisticsWindow, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+        ImGui::SetWindowPos(ImVec2(WIDTH - ImGui::GetWindowWidth() + 1.0F, -1.0F), ImGuiCond_Always);
+        //std::string camModeInfo = inCameraMode() ? "[F1]: Exit Camera-Interaction" : "[F1]: Start Camera-Interaction";
+        //ImGui::TextColored(ImVec4(0.7f, 0.2f, .3f, 1.f), camModeInfo.c_str());
+        std::string fps = std::to_string(ImGui::GetIO().Framerate);
+        static std::vector<float> values;
+        values.push_back(ImGui::GetIO().Framerate);
+        if (values.size() > 90) values.erase(values.begin());
+        ImGui::PlotLines(fps.c_str(), values.data(), static_cast<int>(values.size()), 0, nullptr, 0.0f, FLT_MAX, ImVec2(0.0f, 60.0f));
+
+        /*if (mDataset->isFileOpen()) {
+            if (ImGui::CollapsingHeader("Dataset Information", ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
+                ImGui::Text("File:             %s", mDataset->getName().c_str());
+                ImGui::Text("Line-Count:       %d", mDataset->getLineCount());
+                ImGui::Text("Polyline-Count:   %d", mDataset->getPolylineCount());
+                ImGui::Text("Vertex-Count:     %d", mDataset->getVertexCount());
+                ImGui::Separator();
+                auto dim = mDataset->getDimensions();
+                auto vel = mDataset->getDataBounds();
+                ImGui::Text("Dimensions:       %.1f x %.1f x %.1f", dim.x, dim.y, dim.z);
+                ImGui::Text("Data-Bounds:  %.5f - %.5f", vel.x, vel.y);
+                ImGui::Separator();
+                ImGui::Text("Loading-Time:     %.3f s", mDataset->getLastLoadingTime());
+                ImGui::Text("Preprocess-Time:  %.3f s", mDataset->getLastPreprocessTime());
+                ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
+            }
+        }*/
+        ImGui::End();
+    }
+    
+    mOpenFileDialog.Display();
+    if (mOpenFileDialog.HasSelected()) {
+        // ToDo Load Data-File into buffer
+        std::string filename = mOpenFileDialog.GetSelected().string();
+        mOpenFileDialog.ClearSelected();
+       // this->loadDatasetFromFile(filename);
+    }
 }
 
 void RenderFrame()
@@ -329,30 +561,30 @@ void RenderFrame()
     XMVECTOR colorHelper = XMVectorSet(64.0f / 255.0f, 224.0f / 255.0f, 208.0f / 255.0f, 1.0f);
     uni.mHelperLineColor = colorHelper;
     uni.mkBufferInfo = XMVectorSet(WIDTH, HEIGHT, mkBufferLayer, 0);
-    uni.mDirLightDirection = mDirLightDirection;
-    uni.mDirLightColor = mDirLightIntensity * mDirLightColor;
-    uni.mAmbLightColor = mAmbLightColor;
-    uni.mMaterialLightReponse = mMaterialReflectivity;
+    uni.mDirLightDirection = XMFLOAT4(mDirLightDirection[0], mDirLightDirection[1], mDirLightDirection[2],0);
+    uni.mDirLightColor = XMFLOAT4(mDirLightColor[0]* mDirLightIntensity, mDirLightColor[1] * mDirLightIntensity, mDirLightColor[2] * mDirLightIntensity, mDirLightColor[3] * mDirLightIntensity);
+    uni.mAmbLightColor = XMFLOAT4(mAmbLightColor[0], mAmbLightColor[1], mAmbLightColor[2], mAmbLightColor[3]);
+    uni.mMaterialLightReponse = XMFLOAT4(mMaterialReflectivity[0], mMaterialReflectivity[1], mMaterialReflectivity[2], mMaterialReflectivity[3]);;
     uni.mBillboardClippingEnabled = mBillboardClippingEnabled;
     uni.mBillboardShadingEnabled = mBillboardShadingEnabled;
     uni.mVertexColorMode = mVertexColorMode;
     if (mVertexColorMode == 0)
-        uni.mVertexColorMin = mVertexColorStatic;
+        uni.mVertexColorMin = XMFLOAT4(mVertexColorStatic[0], mVertexColorStatic[1], mVertexColorStatic[2], 0.0);
     else {
-        uni.mVertexColorMin = mVertexColorMin;
-        uni.mVertexColorMax = mVertexColorMax;
+        uni.mVertexColorMin = XMFLOAT4(mVertexColorMin[0], mVertexColorMin[1], mVertexColorMin[2], 0.0);
+        uni.mVertexColorMax = XMFLOAT4(mVertexColorMax[0], mVertexColorMax[1], mVertexColorMax[2], 0.0);
     }
     uni.mVertexAlphaMode = mVertexAlphaMode;
     if (mVertexAlphaMode == 0)
-        uni.mVertexAlphaBounds = mVertexAlphaBounds;//uni.mVertexAlphaBounds[0] = mVertexAlphaStatic;
+        uni.mVertexAlphaBounds = XMFLOAT4(mVertexAlphaBounds[0], mVertexAlphaBounds[1],0,0);//uni.mVertexAlphaBounds[0] = mVertexAlphaStatic;
     else
-        uni.mVertexAlphaBounds = mVertexAlphaBounds;
+        uni.mVertexAlphaBounds = XMFLOAT4(mVertexAlphaBounds[0], mVertexAlphaBounds[1], 0, 0);;
 
     uni.mVertexRadiusMode = mVertexRadiusMode;
     if (mVertexRadiusMode == 0)
-        uni.mVertexRadiusBounds = mVertexRadiusBounds;//uni.mVertexRadiusBounds[0] = mVertexRadiusStatic;
+        uni.mVertexRadiusBounds = XMFLOAT4(mVertexRadiusBounds[0], mVertexRadiusBounds[1], 0, 0);//uni.mVertexRadiusBounds[0] = mVertexRadiusStatic;
     else
-        uni.mVertexRadiusBounds = mVertexRadiusBounds;
+        uni.mVertexRadiusBounds = XMFLOAT4(mVertexRadiusBounds[0], mVertexRadiusBounds[1], 0, 0);
     uni.mDataMaxLineLength = 10.f;
     uni.mDataMaxVertexAdjacentLineLength = 10.f;
     uni.mVertexAlphaInvert = mVertexAlphaInvert;
@@ -407,7 +639,19 @@ void RenderFrame()
 
     deviceContext->Draw(lineTubeMesh.vertexCount, 0);*/
     // switch the back buffer and the front buffer
+    ImGui_ImplDX11_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+
+    // Render your UI
+    renderUI();
+
+    // Render the ImGui frame
+    ImGui::Render();
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
     swapchain->Present(1, 0);
+
+    
 }
 
 void InitRenderData()
@@ -797,6 +1041,10 @@ void InitRenderData()
 
     D3D11_RECT scissorRect = { 0, 0, WIDTH, HEIGHT };
     deviceContext->RSSetScissorRects(1, &scissorRect);
+
+    mOpenFileDialog.SetTitle("Open Line-Data File");
+    mOpenFileDialog.SetTypeFilters({ ".obj" });
+
 }
 
 void CleanUpRenderData()
@@ -1023,6 +1271,9 @@ void ShutdownD3D()
     quadCompositeShader.vsBlob->Release();
     quadCompositeShader.gsBlob->Release();
     quadCompositeShader.psBlob->Release();
+    ImGui_ImplDX11_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
 
     swapchain->Release();
     backbuffer->Release();
@@ -1032,6 +1283,8 @@ void ShutdownD3D()
 
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
+        return true;
     // check for window closing
     switch (message)
     {

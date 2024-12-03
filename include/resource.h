@@ -122,17 +122,17 @@ struct matrices_and_user_input
 	/// <summary>
 	/// The direction of the light/sun in WS
 	/// </summary>
-	DirectX::XMVECTOR mDirLightDirection;
+	DirectX::XMFLOAT4 mDirLightDirection;
 	/// <summary>
 	/// The color of the light/sun multiplied with the intensity
 	/// a   ... ignored
 	/// </summary>
-	DirectX::XMVECTOR mDirLightColor;
+	DirectX::XMFLOAT4 mDirLightColor;
 	/// <summary>
 	/// The color of the ambient light
 	/// a   ... ignored
 	/// </summary>
-	DirectX::XMVECTOR mAmbLightColor;
+	DirectX::XMFLOAT4 mAmbLightColor;
 	/// <summary>
 	/// The material light properties for the tubes:
 	/// r ... ambient light factor
@@ -140,31 +140,31 @@ struct matrices_and_user_input
 	/// b ... specular light factor
 	/// a ... shininess
 	/// </summary>
-	DirectX::XMVECTOR mMaterialLightReponse; // vec4(0.5, 1.0, 0.5, 32.0);  // amb, diff, spec, shininess
+	DirectX::XMFLOAT4 mMaterialLightReponse; // vec4(0.5, 1.0, 0.5, 32.0);  // amb, diff, spec, shininess
 
 	/// <summary>
 	/// The vertex color for minimum values (depending on the mode).
 	/// Is also used for the color if in static mode
 	/// a ... ignored
 	/// </summary>
-	DirectX::XMVECTOR mVertexColorMin;
+	DirectX::XMFLOAT4 mVertexColorMin;
 	/// <summary>
 	/// The vertex color for vertices with maximum values (depending on the mode)
 	/// a ... ignored
 	/// </summary>
-	DirectX::XMVECTOR mVertexColorMax;
+	DirectX::XMFLOAT4 mVertexColorMax;
 	/// <summary>
 	/// The min/max levels for line transparencies in dynamic modes
 	/// The min value is also used if in static mode
 	/// ba ... ignored
 	/// </summary>
-	DirectX::XMVECTOR mVertexAlphaBounds;
+	DirectX::XMFLOAT4 mVertexAlphaBounds;
 	/// <summary>
 	/// The min/max level for the radius of vertices in dynamic modes
 	/// The min value is also used if in static mode
 	/// ba ... ignored
 	/// </summary>
-	DirectX::XMVECTOR mVertexRadiusBounds;
+	DirectX::XMFLOAT4 mVertexRadiusBounds;
 
 	/// <summary>
 	/// Flag to enable/disable the clipping of the billboard based on the raycasting
