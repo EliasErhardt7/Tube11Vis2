@@ -1,4 +1,4 @@
-#include "geometry.h"
+/*#include "geometry.h"
 
 #include "util/util.h"
 
@@ -109,4 +109,4 @@ bool LoadObjFile(const char* inputFile, std::vector<VertexPosNormal>& vertices)
 
     return true;
 }
-
+*/

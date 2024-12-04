@@ -8,7 +8,7 @@
 #include <sstream>
 #include <d3dcompiler.h>
 #include <format>
-#include <fmt/core.h>
+//#include <fmt/core.h>
 #pragma comment (lib, "d3d11.lib")
 #pragma comment (lib, "DirectXTK.lib")
 #pragma comment (lib, "d3dcompiler.lib")
@@ -125,8 +125,8 @@ float mVertexAlphaBounds[2] = { 0.5, 0.8 };
 
 int mVertexRadiusMode = 0;
 bool mVertexRadiusInvert = false;
-float mVertexRadiusStatic = 0.1;
-float mVertexRadiusBounds[2] = { 0.1, 0.002 };
+float mVertexRadiusStatic = 0.001;
+float mVertexRadiusBounds[2] = { 0.001, 0.002 };
 float mClearColor[4] = { 1.0F, 1.0F, 1.0F, 0.2F };
 bool mShowStatisticsWindow = true;
 bool mFullscreenModeEnabled = false;
@@ -839,9 +839,9 @@ void InitRenderData()
 		D3D11_DEPTH_STENCIL_DESC dsDesc;
 		ZeroMemory(&dsDesc, sizeof(D3D11_DEPTH_STENCIL_DESC));
 
-		dsDesc.DepthEnable = true;
+		dsDesc.DepthEnable = false;
 		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-		dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
+		//dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
 		//dsDesc.StencilEnable = true;
 
 		result = device->CreateDepthStencilState(&dsDesc, &depthStencilStateWithDepthTest);

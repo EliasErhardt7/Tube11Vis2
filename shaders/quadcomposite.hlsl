@@ -238,6 +238,10 @@ float3 color_from_id_hash(uint a)
 [maxvertexcount(4)]
 void GSMain(lineadj VertexOutput input[4], inout TriangleStream<GSOutput> outputStream)
 {
+
+	if(input[0].position.x == input[1].position.x && input[0].position.y == input[1].position.y && input[0].position.z == input[1].position.z){
+		return;
+	}
 	float4 colA = float4(1.0, 1.0, 1.0, 1.0);
     float4 colB = float4(1.0, 1.0, 1.0, 1.0);
     float radA = 0.0;
