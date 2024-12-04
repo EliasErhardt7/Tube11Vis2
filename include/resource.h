@@ -52,6 +52,7 @@ struct Mesh
     ID3D11InputLayout* vertexLayout;
 
     UINT vertexCount;
+	UINT indexCount;
     UINT stride;
     UINT offset;
     D3D_PRIMITIVE_TOPOLOGY topology;

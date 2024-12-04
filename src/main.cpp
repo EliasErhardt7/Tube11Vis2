@@ -26,11 +26,12 @@
 ///////////////////////
 // global declarations
 #define IMGUI_COLLAPSEINDENTWIDTH 20.0F // The width of the coll
-constexpr int WIDTH = 1024;
-constexpr int HEIGHT = 768;
+int WIDTH = 1024;
+int HEIGHT = 768;
 constexpr size_t NUM_RENDERTARGETS = 3;
 constexpr size_t NUM_STORAGETARGETS = 1;
 bool isRightButtonDown = false;
+bool finishInit = false;
 // timer for retrieving delta time between frames
 Timer timer;
 
@@ -100,6 +101,7 @@ ID3D11Buffer* compositionConstantBuffer;
 
 std::unique_ptr<Dataset> mDataset;
 std::vector<draw_call_t> mDrawCalls;
+ID3D11Buffer* mIndexBuffer;
 
 bool mBillboardClippingEnabled = true;
 bool mBillboardShadingEnabled = true;
@@ -160,6 +162,7 @@ void loadDatasetFromFile(std::string& filename);
 void renderUI();
 // update tick for render data (e.g., to update transformation matrices)
 void UpdateTick(float deltaTime);
+void OnSwapChainResized(HWND hWnd);
 // rendering
 void RenderFrame();
 //void activateImGuiStyle(bool darkMode, float alpha);
@@ -214,7 +217,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		NULL);                      // used with multiple windows, NULL
 
 	ShowWindow(hWnd, nCmdShow);
+
 	mDataset = std::make_unique<Dataset>();
+
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
@@ -274,7 +279,33 @@ void loadDatasetFromFile(std::string& filename) {
 	mDataset->importFromFile(filename);
 
 	std::vector<VertexData> gpuVertexData;
-	mDataset->fillGPUReadyBuffer(gpuVertexData, mDrawCalls);
+
+	std::vector<uint32_t> dataIndexBuffer;
+	//mDataset->fillGPUReadyBuffer(gpuVertexData, mDrawCalls);
+	mDataset->fillGPUReadyBuffer(gpuVertexData, dataIndexBuffer);
+
+	// Create new GPU Buffer
+	D3D11_BUFFER_DESC id;
+	ZeroMemory(&id, sizeof(D3D11_BUFFER_DESC));
+
+	id.Usage = D3D11_USAGE_DYNAMIC;
+	id.ByteWidth = static_cast<UINT>(sizeof(uint32_t) * dataIndexBuffer.size());
+	id.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	id.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+	// create the buffer
+	HRESULT result = device->CreateBuffer(&id, NULL, &mIndexBuffer);
+	if (FAILED(result))
+	{
+		std::cerr << "Failed to create screen aligned quad vertex buffer\n";
+		exit(-1);
+	}
+	// copy vertex data to buffer
+	D3D11_MAPPED_SUBRESOURCE ms2;
+	deviceContext->Map(mIndexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms2);
+	memcpy(ms2.pData, dataIndexBuffer.data(), sizeof(uint32_t) * dataIndexBuffer.size());
+	deviceContext->Unmap(mIndexBuffer, NULL);
+
 
 	// Create new GPU Buffer
 	D3D11_BUFFER_DESC bd;
@@ -287,7 +318,7 @@ void loadDatasetFromFile(std::string& filename) {
 	bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 
 	// create the buffer
-	HRESULT result = device->CreateBuffer(&bd, NULL, &mNewVertexBuffer);
+	result = device->CreateBuffer(&bd, NULL, &mNewVertexBuffer);
 	if (FAILED(result))
 	{
 		std::cerr << "Failed to create screen aligned quad vertex buffer\n";
@@ -316,6 +347,7 @@ void loadDatasetFromFile(std::string& filename) {
 	}
 
 	vertexTubeMesh.vertexCount = gpuVertexData.size();
+	vertexTubeMesh.indexCount = dataIndexBuffer.size();
 	vertexTubeMesh.stride = static_cast<UINT>(sizeof(VertexData));
 	vertexTubeMesh.offset = 0;
 	vertexTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP_ADJ;
@@ -341,8 +373,8 @@ void toggleFullscreenMode() {
 void UpdateTick(float deltaTime)
 {
 	// Camera movement speed
-	const float cameraSpeed = 2.0f * deltaTime;
-	const float rotationSpeed = 2.0f * deltaTime;
+	const float cameraSpeed = 1.0f * deltaTime;
+	const float rotationSpeed = 1.0f * deltaTime;
 
 	// Forward/Backward movement
 	if (GetAsyncKeyState('W') & 0x8000) camera.MoveForward(cameraSpeed);
@@ -390,26 +422,6 @@ void renderUI() {
 			if (ImGui::MenuItem("Load Data-File")) {
 				mOpenFileDialog.Open();
 			}
-			if (ImGui::MenuItem("Exit Application", "Esc")) {
-				//gvk::current_composition()->stop(); // exit renderloop
-			}
-			ImGui::EndMenu();
-		}
-		if (ImGui::BeginMenu("UI")) {
-			const char* statButtonText[] = { "Show Statistics", "Hide Statistics" };
-			if (ImGui::MenuItem("Start Camera-Interaction", "F1")) {
-				toggleInputMode();
-			}
-			if (ImGui::MenuItem("Hide Full UI", "F2")) {
-				mShowUI = false;
-			}
-			if (ImGui::MenuItem(statButtonText[mShowStatisticsWindow], "F3")) {
-				mShowStatisticsWindow = !mShowStatisticsWindow;
-			}
-			std::string fullScreenText = mFullscreenModeEnabled ? "Disable Fullscreen-Mode" : "Activate Fullscreen-Mode";
-			if (ImGui::MenuItem(fullScreenText.c_str(), "F11")) {
-				toggleFullscreenMode();
-			}
 			ImGui::EndMenu();
 		}
 		ImGui::EndMenuBar();
@@ -429,13 +441,8 @@ void renderUI() {
 		ImGui::Checkbox("Main Render Pass Enabled", &mMainRenderPassEnabled);
 		if (mMainRenderPassEnabled) {
 			ImGui::Checkbox("Billboard-Clipping", &mBillboardClippingEnabled);
-			ImGui::Checkbox("Billboard-Shading", &mBillboardShadingEnabled); // TODO
+			ImGui::Checkbox("Billboard-Shading", &mBillboardShadingEnabled);
 		}
-		/*ImGui::Separator();
-		ImGui::Checkbox("Show Helper Lines", &mDraw2DHelperLines);
-		if (mDraw2DHelperLines) {
-			ImGui::ColorEdit3("Color", mHelperLineColor);
-		}*/
 		ImGui::Separator();
 		ImGui::Checkbox("Resolve K-Buffer", &mResolveKBuffer);
 		ImGui::SliderInt("Layer", &mkBufferLayer, 1, mkBufferLayerCount);
@@ -488,17 +495,6 @@ void renderUI() {
 		ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
 		ImGui::PopID();
 	}
-
-	/*if (ImGui::CollapsingHeader("Camera")) {
-		ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
-		auto camPos = mQuakeCam->translation();
-		auto camDir = mQuakeCam->rotation() * glm::vec3(0, 0, -1);
-		ImGui::Text("Position:  %.3f | %.3f | %.3f", camPos.x, camPos.y, camPos.z);
-		ImGui::Text("Direction: %.3f | %.3f | %.3f", camDir.x, camDir.y, camDir.z);
-		if (ImGui::Button("Reset Camera"))
-			resetCamera();
-		ImGui::Indent(-IMGUI_COLLAPSEINDENTWIDTH);
-	}*/
 	if (ImGui::CollapsingHeader("Lighting & Material")) {
 		ImGui::Indent(IMGUI_COLLAPSEINDENTWIDTH);
 		if (ImGui::CollapsingHeader("Ambient Light", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -526,8 +522,6 @@ void renderUI() {
 	if (mShowStatisticsWindow) {
 		ImGui::Begin("Statistics", &mShowStatisticsWindow, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 		ImGui::SetWindowPos(ImVec2(WIDTH - ImGui::GetWindowWidth() + 1.0F, -1.0F), ImGuiCond_Always);
-		//std::string camModeInfo = inCameraMode() ? "[F1]: Exit Camera-Interaction" : "[F1]: Start Camera-Interaction";
-		//ImGui::TextColored(ImVec4(0.7f, 0.2f, .3f, 1.f), camModeInfo.c_str());
 		std::string fps = std::to_string(ImGui::GetIO().Framerate);
 		static std::vector<float> values;
 		values.push_back(ImGui::GetIO().Framerate);
@@ -557,7 +551,6 @@ void renderUI() {
 
 	mOpenFileDialog.Display();
 	if (mOpenFileDialog.HasSelected()) {
-		// ToDo Load Data-File into buffer
 		std::string filename = mOpenFileDialog.GetSelected().string();
 		mOpenFileDialog.ClearSelected();
 		loadDatasetFromFile(filename);
@@ -673,6 +666,7 @@ void RenderFrame()
 
 		deviceContext->IASetInputLayout(vertexTubeMesh.vertexLayout);
 		deviceContext->IASetVertexBuffers(0, 1, &vertexTubeMesh.vertexBuffer, &vertexTubeMesh.stride, &vertexTubeMesh.offset);
+		deviceContext->IASetIndexBuffer(mIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 		deviceContext->IASetPrimitiveTopology(vertexTubeMesh.topology);
 
 		
@@ -684,8 +678,11 @@ void RenderFrame()
 		deviceContext->GSSetConstantBuffers(0, 1, &compositionConstantBuffer);
 		deviceContext->PSSetConstantBuffers(0, 1, &compositionConstantBuffer);
 
-		deviceContext->Draw(vertexTubeMesh.vertexCount, 0);
-
+		//for (unsigned int i = 0; i < mDrawCalls.size(); i++) {
+		//	deviceContext->Draw(mDrawCalls[i].numberOfPrimitives, mDrawCalls[i].firstIndex);
+		//}
+		deviceContext->DrawIndexed(vertexTubeMesh.indexCount, 0, 0);
+		//deviceContext->Draw(vertexTubeMesh.vertexCount, 0);
 		//unbind SRVs
 		deviceContext->PSSetShaderResources(0, 1, &NULL_SRV);
 		deviceContext->GSSetShader(NULL, 0, 0);
@@ -842,9 +839,9 @@ void InitRenderData()
 		D3D11_DEPTH_STENCIL_DESC dsDesc;
 		ZeroMemory(&dsDesc, sizeof(D3D11_DEPTH_STENCIL_DESC));
 
-		dsDesc.DepthEnable = false;
-		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-		//dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
+		dsDesc.DepthEnable = true;
+		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
 		//dsDesc.StencilEnable = true;
 
 		result = device->CreateDepthStencilState(&dsDesc, &depthStencilStateWithDepthTest);
@@ -910,70 +907,6 @@ void InitRenderData()
 		deviceContext->RSSetState(defaultRasterizerState);
 	}
 
-
-	// initialize screen aligned quad
-	{
-		D3D11_BUFFER_DESC bd;
-		ZeroMemory(&bd, sizeof(D3D11_BUFFER_DESC));
-
-		bd.Usage = D3D11_USAGE_DYNAMIC;
-		bd.ByteWidth = static_cast<UINT>(sizeof(VertexData) * VertexTube.size());
-
-		bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-		bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-
-		// create the buffer
-		result = device->CreateBuffer(&bd, NULL, &vertexTubeMesh.vertexBuffer);
-		if (FAILED(result))
-		{
-			std::cerr << "Failed to create screen aligned quad vertex buffer\n";
-			exit(-1);
-		}
-
-		// copy vertex data to buffer
-		D3D11_MAPPED_SUBRESOURCE ms;
-		deviceContext->Map(vertexTubeMesh.vertexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
-		memcpy(ms.pData, VertexTube.data(), sizeof(VertexData) * VertexTube.size());
-		deviceContext->Unmap(vertexTubeMesh.vertexBuffer, NULL);
-
-		// create input vertex layout
-		D3D11_INPUT_ELEMENT_DESC ied[] =
-		{
-			{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
-			{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
-			{"TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0}
-		};
-
-		result = device->CreateInputLayout(ied, 3, quadCompositeShader.vsBlob->GetBufferPointer(), quadCompositeShader.vsBlob->GetBufferSize(), &vertexTubeMesh.vertexLayout);
-		if (FAILED(result))
-		{
-			std::cerr << "Failed to create screen aligned quad input layout\n";
-			exit(-1);
-		}
-
-		vertexTubeMesh.vertexCount = static_cast<UINT>(VertexTube.size());
-		vertexTubeMesh.stride = static_cast<UINT>(sizeof(VertexData));
-		vertexTubeMesh.offset = 0;
-		vertexTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP_ADJ;
-	}
-	/* {
-		D3D11_RASTERIZER_DESC rasterDesc;
-		ZeroMemory(&rasterDesc, sizeof(D3D11_RASTERIZER_DESC));
-		rasterDesc.FillMode = D3D11_FILL_WIREFRAME;
-		rasterDesc.CullMode = D3D11_CULL_BACK;
-		rasterDesc.FrontCounterClockwise = FALSE;
-		rasterDesc.DepthClipEnable = TRUE;
-
-		ID3D11RasterizerState* pRasterState;
-		result = device->CreateRasterizerState(&rasterDesc, &pRasterState);
-		if (FAILED(result))
-		{
-			std::cerr << "Failed to create rasterizer state\n";
-			exit(-1);
-		}
-		deviceContext->RSSetState(pRasterState);
-	}*/
-	// initialize line helper
 	{
 		D3D11_BUFFER_DESC bd;
 		ZeroMemory(&bd, sizeof(D3D11_BUFFER_DESC));
@@ -1016,61 +949,7 @@ void InitRenderData()
 		lineTubeMesh.offset = 0;
 		lineTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP_ADJ;
 	}
-	/*
-	// initialize resolve shader
-	{
-		D3D11_BUFFER_DESC bd;
-		ZeroMemory(&bd, sizeof(D3D11_BUFFER_DESC));
 
-		bd.Usage = D3D11_USAGE_DYNAMIC;
-		bd.ByteWidth = static_cast<UINT>(sizeof(VertexData) * VertexTube.size());
-
-		bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-		bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-
-		// create the buffer
-		result = device->CreateBuffer(&bd, NULL, &vertexTubeMesh.vertexBuffer);
-		if (FAILED(result))
-		{
-			std::cerr << "Failed to create screen aligned quad vertex buffer\n";
-			exit(-1);
-		}
-
-		// copy vertex data to buffer
-		D3D11_MAPPED_SUBRESOURCE ms;
-		deviceContext->Map(vertexTubeMesh.vertexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
-		memcpy(ms.pData, VertexTube.data(), sizeof(VertexData) * VertexTube.size());
-		deviceContext->Unmap(vertexTubeMesh.vertexBuffer, NULL);
-
-		// create input vertex layout
-		D3D11_INPUT_ELEMENT_DESC ied[] =
-		{
-			{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
-			{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
-			{"TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0}
-		};
-
-		result = device->CreateInputLayout(ied, 0, resolveShader.vsBlob->GetBufferPointer(), resolveShader.vsBlob->GetBufferSize(), &vertexTubeMesh.vertexLayout);
-		if (FAILED(result))
-		{
-			std::cerr << "Failed to create screen aligned quad input layout\n";
-			exit(-1);
-		}
-
-		vertexTubeMesh.vertexCount = static_cast<UINT>(VertexTube.size());
-		vertexTubeMesh.stride = static_cast<UINT>(sizeof(VertexData));
-		vertexTubeMesh.offset = 0;
-		vertexTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP_ADJ;
-	}*/
-
-	// initialize transforms
-	//{
-		//transforms.model = DirectX::XMMatrixIdentity();
-		//transforms.view = DirectX::XMMatrixIdentity();
-		//transforms.proj = DirectX::XMMatrixIdentity();
-	//}
-
-	// create transformation constant buffer
 	{
 		D3D11_BUFFER_DESC bd;
 		ZeroMemory(&bd, sizeof(CD3D11_BUFFER_DESC));
@@ -1130,18 +1009,6 @@ void InitRenderData()
 		}
 	}
 
-	// set the viewport (note: since this does not change, it is sufficient to do this once)
-	/*
-	D3D11_VIEWPORT viewport = { };
-	viewport.TopLeftX = 0;
-	viewport.TopLeftY = 0;
-	viewport.Width = static_cast<float>(WIDTH);
-	viewport.Height = static_cast<float>(HEIGHT);
-	viewport.MinDepth = 0.f;
-	viewport.MaxDepth = 1.f;
-
-	deviceContext->RSSetViewports(1, &viewport);*/
-
 	D3D11_VIEWPORT viewport = { 0.0f, 0.0f, static_cast<float>(WIDTH), static_cast<float>(HEIGHT), 0.0f, 1.0f };
 	deviceContext->RSSetViewports(1, &viewport);
 
@@ -1151,6 +1018,7 @@ void InitRenderData()
 	mOpenFileDialog.SetTitle("Open Line-Data File");
 	mOpenFileDialog.SetTypeFilters({ ".obj" });
 
+	finishInit = true;
 }
 
 void CleanUpRenderData()
@@ -1169,9 +1037,13 @@ void CleanUpRenderData()
 
 
 	// meshes
+	if (vertexTubeMesh.vertexBuffer != nullptr) {
+		//vertexTubeMesh.vertexBuffer->Release();
+	}
+	if (vertexTubeMesh.vertexLayout != nullptr) {
+		//vertexTubeMesh.vertexLayout->Release();
+	}
 
-	vertexTubeMesh.vertexBuffer->Release();
-	vertexTubeMesh.vertexLayout->Release();
 
 	// depth-stencil states
 	depthStencilStateWithDepthTest->Release();
@@ -1427,6 +1299,41 @@ void ShutdownD3D()
 	deviceContext->Release();
 }
 
+void OnSwapChainResized(HWND hWnd)
+{
+	// Get the new window size
+	RECT clientRect;
+	GetClientRect(hWnd, &clientRect);
+	WIDTH = clientRect.right - clientRect.left;
+	HEIGHT = clientRect.bottom - clientRect.top;
+
+	CleanUpRenderData();
+	backbuffer->Release();
+
+	HRESULT hr = swapchain->ResizeBuffers(0, WIDTH, HEIGHT, DXGI_FORMAT_UNKNOWN, 0);
+	if (FAILED(hr)) {
+		// Handle error
+	}
+
+	ID3D11Texture2D* pBackBuffer = nullptr;
+	swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer);
+	
+	if (pBackBuffer != nullptr)
+	{
+		// use the back buffer address to create the render target
+		device->CreateRenderTargetView(pBackBuffer, nullptr, &backbuffer);
+		pBackBuffer->Release();
+	}
+	else
+	{
+		std::cerr << "Could not obtain backbuffer from swapchain";
+		exit(-1);
+	}
+
+	InitRenderData();
+}
+
+
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
@@ -1434,12 +1341,20 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 	// check for window closing
 	switch (message)
 	{
-	case WM_DESTROY:
-	{
-		PostQuitMessage(0);
-		return 0;
-	}
-	break;
+		case WM_SIZE:
+		{
+			if (wParam != SIZE_MINIMIZED && finishInit)
+			{
+				OnSwapChainResized(hWnd);
+			}
+		}
+		break;
+		case WM_DESTROY:
+		{
+			PostQuitMessage(0);
+			return 0;
+		}
+		break;
 	}
 
 	// handle messages that the switch statement did not handle

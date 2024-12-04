@@ -172,19 +172,33 @@ void Dataset::importFromFile(std::string filename)
 
 void Dataset::fillGPUReadyBuffer(std::vector<VertexData>& newVertexBuffer, std::vector<uint32_t>& newIndexBuffer)
 {
-	newVertexBuffer.clear();
-	newIndexBuffer.clear();
-	newVertexBuffer.reserve(mVertexCount);
-	newIndexBuffer.reserve(mVertexCount);
-	uint32_t currIndex = 0;
-	for (Poly& pl : mPolyLineBuffer) {
-		for (uint32_t i = 0; i < pl.vertices.size() - 1; i++) {
-			newVertexBuffer.push_back(pl.vertices[i]);
-			newVertexBuffer.push_back(pl.vertices[i + 1]);
-			newIndexBuffer.push_back(currIndex++);
-			newIndexBuffer.push_back(currIndex++);
-		}
-	}
+    newVertexBuffer.clear();
+    newIndexBuffer.clear();
+    newVertexBuffer.reserve(mVertexCount);
+    newIndexBuffer.reserve(mVertexCount); // Increased reservation for adjacency information
+
+    uint32_t currIndex = 0;
+	int count = 0;
+    for (const Poly& pl : mPolyLineBuffer) {
+		//if (count == 1||count==50) {
+
+			// Add middle vertices
+			for (uint32_t i = 0; i < pl.vertices.size(); ++i) {
+				newVertexBuffer.push_back(pl.vertices[i]);
+			}
+			//newVertexBuffer.push_back(pl.vertices.back());
+			newIndexBuffer.push_back(currIndex + 1);
+			// Create indices for line strip with adjacency
+			for (uint32_t i = 1; i < pl.vertices.size() - 1; ++i) {
+				newIndexBuffer.push_back(currIndex + i);
+			}
+			newIndexBuffer.push_back(currIndex + pl.vertices.size() - 2);
+			//newIndexBuffer.push_back(currIndex+ pl.vertices.size() - 3);
+			currIndex += pl.vertices.size();
+			
+		//}
+		++count;
+    }
 }
 
 void Dataset::fillGPUReadyBuffer(std::vector<VertexData>& newVertexBuffer, std::vector<draw_call_t>& newDrawCalls) {
