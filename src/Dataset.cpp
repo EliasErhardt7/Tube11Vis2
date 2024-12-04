@@ -65,7 +65,7 @@ void Dataset::importFromFile(std::string filename)
 	char tmpNumber[20];	// Note: This array is not even really necessary and can be replaced by Start- and End-indexes refering to data.
 	int tNl = 0;
 	float tmpPosition[3] = { 0, 0, 0 }; int tPi = 0;
-
+	
 	for (std::string::size_type i = 0; i <= data.size(); ++i) {
 		char& c = data[i];
 
@@ -90,13 +90,13 @@ void Dataset::importFromFile(std::string filename)
 			}
 			else if (c == 'g') status = eStatus::IGNOREUNTILNEWLINE;
 			break;
-
+			
 		case eStatus::AFTERV:
 			if (c == 't') status = eStatus::READVT;
 			else if (c == ' ') status = eStatus::READV;
 			else status = eStatus::INITIAL; // shouldnt happen (go back to INITIAL)
 			break;
-
+			
 		case eStatus::READVT:
 			if (c == '\n' || c == ' ') {
 				if (tNl > 0) { // if not its probably just an extra line indent
@@ -121,7 +121,7 @@ void Dataset::importFromFile(std::string filename)
 				tNl++;
 			}
 			break;
-
+			
 		case eStatus::READV:
 			if (c == '\n' || c == ' ') {
 				if (tNl > 0) { // if not its probably just an extra line indent
@@ -152,13 +152,14 @@ void Dataset::importFromFile(std::string filename)
 				tNl++;
 			}
 			break;
-
+			
 		case eStatus::IGNOREUNTILNEWLINE:
 			if (c == '\n') status = eStatus::INITIAL;
 			break;
 		}
 
 		if (c == '\n') curLine++;
+		
 	}
 
 	this->mLastLoadingTime = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count() * 0.000000001;
@@ -180,7 +181,7 @@ void Dataset::fillGPUReadyBuffer(std::vector<VertexData>& newVertexBuffer, std::
     uint32_t currIndex = 0;
 	int count = 0;
     for (const Poly& pl : mPolyLineBuffer) {
-		//if (count == 1||count==50) {
+		//if (count == 1) { break; }
 
 			// Add middle vertices
 			for (uint32_t i = 0; i < pl.vertices.size(); ++i) {
@@ -196,7 +197,7 @@ void Dataset::fillGPUReadyBuffer(std::vector<VertexData>& newVertexBuffer, std::
 			//newIndexBuffer.push_back(currIndex+ pl.vertices.size() - 3);
 			currIndex += pl.vertices.size();
 			
-		//}
+		
 		++count;
     }
 }
