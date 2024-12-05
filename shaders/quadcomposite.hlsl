@@ -30,7 +30,8 @@ struct matrices_and_user_input {
 };
 
 
-StructuredBuffer<uint2> kBuffer : register(t0);
+RWStructuredBuffer<uint2> kBuffer : register(u1);
+
 
 cbuffer UniformBlock : register(b0) {
     matrices_and_user_input uboMatricesAndUserInput;
@@ -262,13 +263,7 @@ void GSMain(lineadj VertexOutput input[4], inout TriangleStream<GSOutput> output
     } else if (uboMatricesAndUserInput.mVertexColorMode == 3) { // based on curvature
         colA.rgb = lerp(uboMatricesAndUserInput.mVertexColorMin.rgb, uboMatricesAndUserInput.mVertexColorMax.rgb, input[1].outCurvature);
         colB.rgb = lerp(uboMatricesAndUserInput.mVertexColorMin.rgb, uboMatricesAndUserInput.mVertexColorMax.rgb, input[2].outCurvature);
-    } /*else if (uboMatricesAndUserInput.mVertexColorMode == 4) { // per Polyline
-        //colA.rgb = color_from_id_hash(pushConstants.drawCallIndex);
-        colB.rgb = colA.rgb;
-    } else if (uboMatricesAndUserInput.mVertexColorMode == 5) { // per Line
-        //colA.rgb = color_from_id_hash(gl_PrimitiveIDIn);
-        colB.rgb = colA.rgb;
-    }*/
+    }
 
     // Alpha calculation
     if (uboMatricesAndUserInput.mVertexAlphaMode == 0) {
@@ -479,23 +474,26 @@ float4 PSMain(GSOutput input) : SV_TARGET {
 	float4 outColor;
     if (insert) {
         for (uint i = 0; i < uint(uboMatricesAndUserInput.kBufferInfo.z); ++i) {
-            uint2 old;
-            //InterlockedMin(kBuffer[listPos(i, input)].x, value.x, old.x);
-			if(kBuffer[listPos(i, input)].x>value.x){
-				old = value;
-			} else if(kBuffer[listPos(i, input)].x==value.x&&kBuffer[listPos(i, input)].y > value.y){
-				old = value;
-			} else if(kBuffer[listPos(i, input)].x==value.x&&kBuffer[listPos(i, input)].y < value.y) {
-				old = kBuffer[listPos(i, input)];
-			}
-			else {
-				old = kBuffer[listPos(i, input)];
+            uint2 old = kBuffer[listPos(i, input)];
+			uint2 compare = old;
+			
+			do {
+				compare = old;
+				uint2 newValue = min(value, compare);
+				
+				InterlockedCompareExchange(kBuffer[listPos(i, input)].x, compare.x, newValue.x, old.x);
+				InterlockedCompareExchange(kBuffer[listPos(i, input)].y, compare.y, newValue.y, old.y);
+			} while (old.x != compare.x || old.y != compare.y);
+
+			if (old.x == 0xFFFFFFFFu && old.y == 0xFFFFFFFFu) {
+				break;
 			}
 
             if (old.x == 0xFFFFFFFFu && old.y == 0xFFFFFFFFu) {
 				
                 break;
             }
+
             value = max(old, value);
 			
             if (i == ((uboMatricesAndUserInput.kBufferInfo.z) - 1)) {
@@ -514,7 +512,6 @@ float4 PSMain(GSOutput input) : SV_TARGET {
             }
         }
     }
-
 	return outColor;
 	
 }

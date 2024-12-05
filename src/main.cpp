@@ -138,6 +138,7 @@ float mHelperLineColor[4] = { 64.0f / 255.0f, 224.0f / 255.0f, 208.0f / 255.0f, 
 bool mMainRenderPassEnabled = true;
 
 bool mResolveKBuffer = true;
+bool vertexBufferSet = false;
 
 long mRenderCallCount = 0;
 int mkBufferLayer = 8;
@@ -353,6 +354,7 @@ void loadDatasetFromFile(std::string& filename) {
 	vertexTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP_ADJ;
 
 	mReplaceOldBufferWithNextFrame = true;
+	vertexBufferSet = true;
 }
 
 void toggleInputMode() {
@@ -567,7 +569,7 @@ void RenderFrame()
 	//float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };  // Black background
 	deviceContext->ClearRenderTargetView(backbuffer, mClearColor);
 	deviceContext->ClearDepthStencilView(depthStencilTarget.dsView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
-
+	computeInfo.kBufferInfo = XMVectorSet(WIDTH, HEIGHT, mkBufferLayer, 0);
 	deviceContext->CSSetShader(computeShader.cShader, 0, 0);
 	std::array<ID3D11UnorderedAccessView*, 1> csUAVs = { storageTargets[0].unorderedAccessView };
 	ID3D11UnorderedAccessView* kBuffer = storageTargets[0].unorderedAccessView;
@@ -643,7 +645,8 @@ void RenderFrame()
 	std::array<ID3D11ShaderResourceView*, 1> compositeSRVs = { storageTargets[0].shaderResourceView };
 	deviceContext->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
 	// BACKGROUND
-	{
+	{	
+		deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
 		deviceContext->VSSetShader(backgroundShader.vShader, 0, 0);
 
 		deviceContext->PSSetShader(backgroundShader.pShader, 0, 0);
@@ -655,60 +658,63 @@ void RenderFrame()
 	}
 	float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 	deviceContext->OMSetBlendState(blendState, blendFactor, 0xFFFFFFFF);
-	if (mMainRenderPassEnabled) {
+	if (vertexBufferSet) {
+		if (mMainRenderPassEnabled) {
 
-		deviceContext->OMSetRenderTargets(1, &backbuffer, depthStencilTarget.dsView);
-		deviceContext->OMSetDepthStencilState(depthStencilStateWithDepthTest, 0);
+			//deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
+			//deviceContext->OMSetDepthStencilState(depthStencilStateWithDepthTest, 0);
+			UINT initialCounts[] = { 0 }; // Optional: Reset counters for append/consume buffers
+			deviceContext->OMSetRenderTargetsAndUnorderedAccessViews(1, &backbuffer, NULL, 1, 1, &csUAVs[0], initialCounts);
 
-		deviceContext->VSSetShader(quadCompositeShader.vShader, 0, 0);
-		deviceContext->GSSetShader(quadCompositeShader.gShader, 0, 0);
-		deviceContext->PSSetShader(quadCompositeShader.pShader, 0, 0);
+			deviceContext->VSSetShader(quadCompositeShader.vShader, 0, 0);
+			deviceContext->GSSetShader(quadCompositeShader.gShader, 0, 0);
+			deviceContext->PSSetShader(quadCompositeShader.pShader, 0, 0);
 
-		deviceContext->IASetInputLayout(vertexTubeMesh.vertexLayout);
-		deviceContext->IASetVertexBuffers(0, 1, &vertexTubeMesh.vertexBuffer, &vertexTubeMesh.stride, &vertexTubeMesh.offset);
-		deviceContext->IASetIndexBuffer(mIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
-		deviceContext->IASetPrimitiveTopology(vertexTubeMesh.topology);
+			deviceContext->IASetInputLayout(vertexTubeMesh.vertexLayout);
+			deviceContext->IASetVertexBuffers(0, 1, &vertexTubeMesh.vertexBuffer, &vertexTubeMesh.stride, &vertexTubeMesh.offset);
+			deviceContext->IASetIndexBuffer(mIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+			deviceContext->IASetPrimitiveTopology(vertexTubeMesh.topology);
 
-		
-		deviceContext->PSSetShaderResources(0, 1, &compositeSRVs[0]);
 
-		//deviceContext->PSSetSamplers(0, 1, &defaultSamplerState);
+			//deviceContext->PSSetShaderResources(0, 1, &compositeSRVs[0]);
 
-		deviceContext->VSSetConstantBuffers(0, 1, &compositionConstantBuffer);
-		deviceContext->GSSetConstantBuffers(0, 1, &compositionConstantBuffer);
-		deviceContext->PSSetConstantBuffers(0, 1, &compositionConstantBuffer);
+			//deviceContext->PSSetSamplers(0, 1, &defaultSamplerState);
 
-		//for (unsigned int i = 0; i < mDrawCalls.size(); i++) {
-		//	deviceContext->Draw(mDrawCalls[i].numberOfPrimitives, mDrawCalls[i].firstIndex);
-		//}
-		deviceContext->DrawIndexed(vertexTubeMesh.indexCount, 0, 0);
-		//deviceContext->Draw(vertexTubeMesh.vertexCount, 0);
-		//unbind SRVs
-		deviceContext->PSSetShaderResources(0, 1, &NULL_SRV);
-		deviceContext->GSSetShader(NULL, 0, 0);
+			deviceContext->VSSetConstantBuffers(0, 1, &compositionConstantBuffer);
+			deviceContext->GSSetConstantBuffers(0, 1, &compositionConstantBuffer);
+			deviceContext->PSSetConstantBuffers(0, 1, &compositionConstantBuffer);
+
+			//for (unsigned int i = 0; i < mDrawCalls.size(); i++) {
+			//	deviceContext->Draw(mDrawCalls[i].numberOfPrimitives, mDrawCalls[i].firstIndex);
+			//}
+			deviceContext->DrawIndexed(vertexTubeMesh.indexCount, 0, 0);
+			//deviceContext->Draw(vertexTubeMesh.vertexCount, 0);
+			//unbind SRVs
+			//deviceContext->PSSetShaderResources(0, 1, &NULL_SRV);
+			deviceContext->GSSetShader(NULL, 0, 0);
+		}
+
+		// RESOLVE KBUFFER
+		if (mResolveKBuffer) {
+			deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
+
+			//deviceContext->IASetVertexBuffers(0, 1, nullptr, 0, 0);
+			deviceContext->VSSetShader(resolveShader.vShader, 0, 0);
+
+			deviceContext->PSSetShader(resolveShader.pShader, 0, 0);
+
+			deviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+			deviceContext->PSSetShaderResources(0, 1, &compositeSRVs[0]);
+
+			deviceContext->PSSetConstantBuffers(0, 1, &compositionConstantBuffer);
+
+			deviceContext->Draw(6, 0);
+
+			//unbind SRVs
+			deviceContext->PSSetShaderResources(0, 1, &NULL_SRV);
+		}
 	}
-	
-	// RESOLVE KBUFFER
-	if (mResolveKBuffer) {
-		deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
-
-		//deviceContext->IASetVertexBuffers(0, 1, nullptr, 0, 0);
-		deviceContext->VSSetShader(resolveShader.vShader, 0, 0);
-		
-		deviceContext->PSSetShader(resolveShader.pShader, 0, 0);
-
-		deviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-		deviceContext->PSSetShaderResources(0, 1, &compositeSRVs[0]);
-
-		deviceContext->PSSetConstantBuffers(0, 1, &compositionConstantBuffer);
-
-		deviceContext->Draw(6, 0);
-
-		//unbind SRVs
-		deviceContext->PSSetShaderResources(0, 1, &NULL_SRV);
-	}
-
 	// LINES SHADER
 	/*
 	deviceContext->VSSetShader(linesShader.vShader, 0, 0);
@@ -733,7 +739,7 @@ void RenderFrame()
 	// Render the ImGui frame
 	ImGui::Render();
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-	swapchain->Present(1, 0);
+	swapchain->Present(0, 0);
 
 
 }
@@ -771,6 +777,7 @@ void InitRenderData()
 		srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
 		srvDesc.Buffer.FirstElement = 0;
 		srvDesc.Buffer.NumElements = WIDTH * HEIGHT * mkBufferLayerCount;
+
 
 		result = device->CreateShaderResourceView(storageTargets[0].structuredBuffer, &srvDesc, &storageTargets[0].shaderResourceView);
 		if (FAILED(result))
@@ -989,7 +996,7 @@ void InitRenderData()
 
 	// compute kBufferInfo parameter
 	{
-		computeInfo.kBufferInfo = XMVectorSet(WIDTH, HEIGHT, mkBufferLayer, 0);
+		
 	}
 	{
 		D3D11_BUFFER_DESC bd;
@@ -1115,7 +1122,7 @@ void InitD3D(HWND hWnd)
 
 	// textured screen-aligned quad shader
 	{
-		auto hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "VSMain", "vs_4_0", compileFlags, 0, &quadCompositeShader.vsBlob, &errorBlob);
+		auto hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "VSMain", "vs_5_0", compileFlags, 0, &quadCompositeShader.vsBlob, &errorBlob);
 		if (FAILED(hr))
 		{
 			if (errorBlob)
@@ -1127,7 +1134,7 @@ void InitD3D(HWND hWnd)
 			exit(-1);
 		}
 
-		hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "GSMain", "gs_4_0", compileFlags, 0, &quadCompositeShader.gsBlob, &errorBlob);
+		hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "GSMain", "gs_5_0", compileFlags, 0, &quadCompositeShader.gsBlob, &errorBlob);
 		if (FAILED(hr))
 		{
 			if (errorBlob)
@@ -1139,7 +1146,7 @@ void InitD3D(HWND hWnd)
 			exit(-1);
 		}
 
-		hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "PSMain", "ps_4_0", compileFlags, 0, &quadCompositeShader.psBlob, &errorBlob);
+		hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "PSMain", "ps_5_0", compileFlags, 0, &quadCompositeShader.psBlob, &errorBlob);
 		if (FAILED(hr))
 		{
 			if (errorBlob)
@@ -1175,7 +1182,7 @@ void InitD3D(HWND hWnd)
 	// background Shader
 
 	{
-		auto hr = D3DCompileFromFile(L"shaders/background.hlsl", 0, 0, "VSMain", "vs_4_0", compileFlags, 0, &backgroundShader.vsBlob, &errorBlob);
+		auto hr = D3DCompileFromFile(L"shaders/background.hlsl", 0, 0, "VSMain", "vs_5_0", compileFlags, 0, &backgroundShader.vsBlob, &errorBlob);
 		if (FAILED(hr))
 		{
 			if (errorBlob)
@@ -1187,7 +1194,7 @@ void InitD3D(HWND hWnd)
 			exit(-1);
 		}
 
-		hr = D3DCompileFromFile(L"shaders/background.hlsl", 0, 0, "PSMain", "ps_4_0", compileFlags, 0, &backgroundShader.psBlob, &errorBlob);
+		hr = D3DCompileFromFile(L"shaders/background.hlsl", 0, 0, "PSMain", "ps_5_0", compileFlags, 0, &backgroundShader.psBlob, &errorBlob);
 		if (FAILED(hr))
 		{
 			if (errorBlob)
@@ -1206,7 +1213,7 @@ void InitD3D(HWND hWnd)
 
 	// resolve Shader
 	{
-		auto hr = D3DCompileFromFile(L"shaders/resolveShader.hlsl", 0, 0, "VSMain", "vs_4_0", compileFlags, 0, &resolveShader.vsBlob, &errorBlob);
+		auto hr = D3DCompileFromFile(L"shaders/resolveShader.hlsl", 0, 0, "VSMain", "vs_5_0", compileFlags, 0, &resolveShader.vsBlob, &errorBlob);
 		if (FAILED(hr))
 		{
 			if (errorBlob)
@@ -1218,7 +1225,7 @@ void InitD3D(HWND hWnd)
 			exit(-1);
 		}
 
-		hr = D3DCompileFromFile(L"shaders/resolveShader.hlsl", 0, 0, "PSMain", "ps_4_0", compileFlags, 0, &resolveShader.psBlob, &errorBlob);
+		hr = D3DCompileFromFile(L"shaders/resolveShader.hlsl", 0, 0, "PSMain", "ps_5_0", compileFlags, 0, &resolveShader.psBlob, &errorBlob);
 		if (FAILED(hr))
 		{
 			if (errorBlob)
@@ -1237,7 +1244,7 @@ void InitD3D(HWND hWnd)
 
 	// helper lines
 	{
-		auto hr = D3DCompileFromFile(L"shaders/2dlines.hlsl", 0, 0, "VSMain", "vs_4_0", compileFlags, 0, &linesShader.vsBlob, &errorBlob);
+		auto hr = D3DCompileFromFile(L"shaders/2dlines.hlsl", 0, 0, "VSMain", "vs_5_0", compileFlags, 0, &linesShader.vsBlob, &errorBlob);
 		if (FAILED(hr))
 		{
 			if (errorBlob)
@@ -1249,7 +1256,7 @@ void InitD3D(HWND hWnd)
 			exit(-1);
 		}
 
-		hr = D3DCompileFromFile(L"shaders/2dlines.hlsl", 0, 0, "PSMain", "ps_4_0", compileFlags, 0, &linesShader.psBlob, &errorBlob);
+		hr = D3DCompileFromFile(L"shaders/2dlines.hlsl", 0, 0, "PSMain", "ps_5_0", compileFlags, 0, &linesShader.psBlob, &errorBlob);
 		if (FAILED(hr))
 		{
 			if (errorBlob)

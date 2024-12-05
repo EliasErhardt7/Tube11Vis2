@@ -183,19 +183,30 @@ void Dataset::fillGPUReadyBuffer(std::vector<VertexData>& newVertexBuffer, std::
     for (const Poly& pl : mPolyLineBuffer) {
 		//if (count == 1) { break; }
 
-			// Add middle vertices
-			for (uint32_t i = 0; i < pl.vertices.size(); ++i) {
-				newVertexBuffer.push_back(pl.vertices[i]);
-			}
-			//newVertexBuffer.push_back(pl.vertices.back());
-			newIndexBuffer.push_back(currIndex + 1);
-			// Create indices for line strip with adjacency
-			for (uint32_t i = 1; i < pl.vertices.size() - 1; ++i) {
-				newIndexBuffer.push_back(currIndex + i);
-			}
-			newIndexBuffer.push_back(currIndex + pl.vertices.size() - 2);
-			//newIndexBuffer.push_back(currIndex+ pl.vertices.size() - 3);
-			currIndex += pl.vertices.size();
+		/*VertexData vertex;
+		vertex.curvature = pl.vertices[0].curvature;
+		vertex.data = pl.vertices[0].data;
+		vertex.position = DirectX::XMFLOAT3(pl.vertices[0].position.x + 0.001, pl.vertices[0].position.y + 0.001, pl.vertices[0].position.z + 0.001);*/
+		//newVertexBuffer.push_back(pl.vertices[0]);
+		// Add middle vertices
+		for (uint32_t i = 0; i < pl.vertices.size(); i++) {
+			newVertexBuffer.push_back(pl.vertices[i]);
+		}
+		/*VertexData vertex2;
+		vertex2.curvature = pl.vertices[pl.vertices.size() - 2].curvature;
+		vertex2.data = pl.vertices[pl.vertices.size() - 2].data;
+		vertex2.position = DirectX::XMFLOAT3(pl.vertices[pl.vertices.size() - 2].position.x + 0.001, pl.vertices[pl.vertices.size() - 2].position.y + 0.001, pl.vertices[pl.vertices.size() - 2].position.z + 0.001);
+		newVertexBuffer.push_back(vertex2);*/
+		//newVertexBuffer.push_back(pl.vertices.back());
+
+		newIndexBuffer.push_back(currIndex+1);
+		// Create indices for line strip with adjacency
+		for (uint32_t i = 1; i < pl.vertices.size()-1; i++) {
+			newIndexBuffer.push_back(currIndex + i);
+		}
+		newIndexBuffer.push_back(currIndex + pl.vertices.size() - 2);
+		//newIndexBuffer.push_back(currIndex+ pl.vertices.size() - 3);
+		currIndex += pl.vertices.size();
 			
 		
 		++count;
