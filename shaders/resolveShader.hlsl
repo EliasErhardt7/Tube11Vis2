@@ -123,5 +123,5 @@ float4 PSMain(VertexOutput input) : SV_TARGET
 
     alpha = 1 - alpha;
     return float4(color / alpha, alpha);
-    //return float4(1,0,1,1);
+    //return float4(1,0,1,alpha);
 }

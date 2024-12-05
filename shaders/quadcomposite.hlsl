@@ -471,10 +471,25 @@ float4 PSMain(GSOutput input) : SV_TARGET {
 	
 	float4 unpackedColor;
 	float alpha;
-	float4 outColor;
+	float4 outColor = float4(0,0,0,0);
     if (insert) {
         for (uint i = 0; i < uint(uboMatricesAndUserInput.kBufferInfo.z); ++i) {
-            uint2 old = kBuffer[listPos(i, input)];
+            /*uint2 old;
+			if(kBuffer[listPos(i, input)].x>value.x){
+				old = value;
+			} else if(kBuffer[listPos(i, input)].x==value.x&&kBuffer[listPos(i, input)].y > value.y){
+				old = value;
+			} else if(kBuffer[listPos(i, input)].x==value.x&&kBuffer[listPos(i, input)].y < value.y) {
+				old = kBuffer[listPos(i, input)];
+			}
+			else {
+				old = kBuffer[listPos(i, input)];
+			}
+			uint2 old = min(kBuffer[listPos(i, input)], value);
+			
+			kBuffer[listPos(i, input)] = old;*/
+			
+			uint2 old = kBuffer[listPos(i, input)];
 			uint2 compare = old;
 			
 			do {
@@ -484,11 +499,7 @@ float4 PSMain(GSOutput input) : SV_TARGET {
 				InterlockedCompareExchange(kBuffer[listPos(i, input)].x, compare.x, newValue.x, old.x);
 				InterlockedCompareExchange(kBuffer[listPos(i, input)].y, compare.y, newValue.y, old.y);
 			} while (old.x != compare.x || old.y != compare.y);
-
-			if (old.x == 0xFFFFFFFFu && old.y == 0xFFFFFFFFu) {
-				break;
-			}
-
+			
             if (old.x == 0xFFFFFFFFu && old.y == 0xFFFFFFFFu) {
 				
                 break;
@@ -508,6 +519,7 @@ float4 PSMain(GSOutput input) : SV_TARGET {
                     outColor = float4(unpackedColor.xyz / alpha, alpha);
                 } else {
                     discard;
+
                 }
             }
         }

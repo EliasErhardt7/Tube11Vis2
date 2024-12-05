@@ -662,10 +662,10 @@ void RenderFrame()
 		if (mMainRenderPassEnabled) {
 
 			//deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
-			//deviceContext->OMSetDepthStencilState(depthStencilStateWithDepthTest, 0);
+			
 			UINT initialCounts[] = { 0 }; // Optional: Reset counters for append/consume buffers
 			deviceContext->OMSetRenderTargetsAndUnorderedAccessViews(1, &backbuffer, NULL, 1, 1, &csUAVs[0], initialCounts);
-
+			deviceContext->OMSetDepthStencilState(depthStencilStateWithDepthTest, 0);
 			deviceContext->VSSetShader(quadCompositeShader.vShader, 0, 0);
 			deviceContext->GSSetShader(quadCompositeShader.gShader, 0, 0);
 			deviceContext->PSSetShader(quadCompositeShader.pShader, 0, 0);
@@ -697,7 +697,7 @@ void RenderFrame()
 		// RESOLVE KBUFFER
 		if (mResolveKBuffer) {
 			deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
-
+			deviceContext->OMSetDepthStencilState(depthStencilStateWithDepthTest, 0);
 			//deviceContext->IASetVertexBuffers(0, 1, nullptr, 0, 0);
 			deviceContext->VSSetShader(resolveShader.vShader, 0, 0);
 
@@ -846,9 +846,9 @@ void InitRenderData()
 		D3D11_DEPTH_STENCIL_DESC dsDesc;
 		ZeroMemory(&dsDesc, sizeof(D3D11_DEPTH_STENCIL_DESC));
 
-		dsDesc.DepthEnable = true;
-		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-		dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
+		dsDesc.DepthEnable = false;
+		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		//dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
 		//dsDesc.StencilEnable = true;
 
 		result = device->CreateDepthStencilState(&dsDesc, &depthStencilStateWithDepthTest);
@@ -897,9 +897,9 @@ void InitRenderData()
 		rasterDesc.CullMode = D3D11_CULL_NONE;
 		rasterDesc.DepthBias = 0;
 		rasterDesc.DepthBiasClamp = 0.0f;
-		rasterDesc.DepthClipEnable = true;
+		rasterDesc.DepthClipEnable = false;
 		rasterDesc.FillMode = D3D11_FILL_SOLID;
-		rasterDesc.FrontCounterClockwise = true;
+		rasterDesc.FrontCounterClockwise = false;
 		rasterDesc.MultisampleEnable = false;
 		rasterDesc.ScissorEnable = false;
 		rasterDesc.SlopeScaledDepthBias = 0.f;
