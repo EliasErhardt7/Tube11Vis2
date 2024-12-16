@@ -413,7 +413,7 @@ uint packUnorm4x8(float4 v)
 
 uint2 pack(float depth, float4 color) {
 
-	uint2 packedColor = uint2(packUnorm4x8(color), asuint(depth));
+	uint2 packedColor = uint2(asuint(depth),packUnorm4x8(color));
 	return packedColor;
 }
 
@@ -429,8 +429,13 @@ float4 unpackUnorm4x8(uint packedValue)
 
 void unpack(uint2 data, out float depth, out float4 color) {
 
-	color=unpackUnorm4x8(data.x);
-	depth=asfloat(data.y);
+	color=unpackUnorm4x8(data.y);
+	depth=asfloat(data.x);
+}
+
+float random (float2 uv)
+{
+	return frac(sin(dot(uv,float2(12.9898,78.233)))*43758.5453123);
 }
 
 float4 PSMain(GSOutput input) : SV_TARGET {
@@ -457,9 +462,9 @@ float4 PSMain(GSOutput input) : SV_TARGET {
         illumination = calculate_illumination(input.color.rgb, camWS, posWsOnCone, tnor.yzw, input);
     }
     float4 color = float4(illumination * input.color.a, 1 - input.color.a);
-	//return color;
-    uint2 value = pack(input.position.z, color);
 
+    uint2 value = pack(input.position.z *2.0 -1.0, color);
+	
     bool insert = true;
     if (value.x > kBuffer[listPos(int(uboMatricesAndUserInput.kBufferInfo.z) - 1, input)].x) {
         insert = false;
@@ -467,38 +472,21 @@ float4 PSMain(GSOutput input) : SV_TARGET {
 		insert = false;
 	}
 	
-
 	
-	float4 unpackedColor;
-	float alpha;
+	float4 unpackedColor = float4(0,0,0,0);
+	float alpha = 1;
 	float4 outColor = float4(0,0,0,0);
     if (insert) {
         for (uint i = 0; i < uint(uboMatricesAndUserInput.kBufferInfo.z); ++i) {
-            /*uint2 old;
-			if(kBuffer[listPos(i, input)].x>value.x){
-				old = value;
-			} else if(kBuffer[listPos(i, input)].x==value.x&&kBuffer[listPos(i, input)].y > value.y){
-				old = value;
-			} else if(kBuffer[listPos(i, input)].x==value.x&&kBuffer[listPos(i, input)].y < value.y) {
-				old = kBuffer[listPos(i, input)];
-			}
-			else {
-				old = kBuffer[listPos(i, input)];
-			}
-			uint2 old = min(kBuffer[listPos(i, input)], value);
-			
-			kBuffer[listPos(i, input)] = old;*/
-			
-			uint2 old = kBuffer[listPos(i, input)];
-			uint2 compare = old;
-			
-			do {
-				compare = old;
-				uint2 newValue = min(value, compare);
+			uint2 old = uint2(0,0);
 				
-				InterlockedCompareExchange(kBuffer[listPos(i, input)].x, compare.x, newValue.x, old.x);
-				InterlockedCompareExchange(kBuffer[listPos(i, input)].y, compare.y, newValue.y, old.y);
-			} while (old.x != compare.x || old.y != compare.y);
+			InterlockedMin(kBuffer[listPos(i, input)].x, value.x, old.x);
+			old.y = kBuffer[listPos(i, input)].y;
+			if(value.x<old.x){
+				
+				kBuffer[listPos(i, input)].y = value.y;
+				
+			}
 			
             if (old.x == 0xFFFFFFFFu && old.y == 0xFFFFFFFFu) {
 				
@@ -511,7 +499,7 @@ float4 PSMain(GSOutput input) : SV_TARGET {
 				
                 if (value.x != 0xFFFFFFFFu || value.y != 0xFFFFFFFFu ) {
 					
-                    float depth;
+                    float depth = 0;
                     
                     unpack(value, depth, unpackedColor);
 					

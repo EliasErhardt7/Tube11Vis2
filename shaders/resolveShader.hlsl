@@ -93,29 +93,33 @@ float4 unpack_unorm4_8(uint packedValue)
 
 float4 PSMain(VertexOutput input) : SV_TARGET
 {
-    uint2 coord = uint2(input.position.xy);
+    int2 coord = int2(input.position.xy);
 
     // load k samples from the data buffers
     Samples samples[K_MAX];
-    uint sample_count = 0;
-    for (uint i = 0; i < uboMatricesAndUserInput.kBufferInfo.z; ++i)
+	for(uint i = 0; i<K_MAX; ++i){
+		samples[i].color = float4(0,0,0,0);
+		samples[i].depth = 0;
+	}
+    int sample_count = 0;
+    for (int i = 0; i < uboMatricesAndUserInput.kBufferInfo.z; ++i)
     {
         uint2 value = kBuffer[listPos(i,input)];
         if (value.x == 0xFFFFFFFFu && value.y == 0xFFFFFFFFu)
         {
             break;
         }
-        samples[i].color = unpack_unorm4_8(value.x);
-        samples[i].depth = asfloat(value.y);
+        samples[i].color = unpack_unorm4_8(value.y);
+        samples[i].depth = asfloat(value.x);
         sample_count++;
     }
-
+	
     if (sample_count == 0)
-        discard;
-
+        discard; //return float4(1,0,0,1);
+	//return float4(samples[2].color.rgb,1);
     float3 color = float3(0, 0, 0);
     float alpha = 1;
-    for (uint i = 0; i < sample_count; ++i)
+    for (int i = 0; i < sample_count; ++i)
     {
         color = color * (samples[sample_count - i - 1].color.a) + samples[sample_count - i - 1].color.rgb;
         alpha *= samples[sample_count - i - 1].color.a;

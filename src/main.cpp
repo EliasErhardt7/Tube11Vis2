@@ -665,7 +665,7 @@ void RenderFrame()
 			
 			UINT initialCounts[] = { 0 }; // Optional: Reset counters for append/consume buffers
 			deviceContext->OMSetRenderTargetsAndUnorderedAccessViews(1, &backbuffer, NULL, 1, 1, &csUAVs[0], initialCounts);
-			deviceContext->OMSetDepthStencilState(depthStencilStateWithDepthTest, 0);
+			deviceContext->OMSetDepthStencilState(depthStencilStateWithoutDepthTest, 0);
 			deviceContext->VSSetShader(quadCompositeShader.vShader, 0, 0);
 			deviceContext->GSSetShader(quadCompositeShader.gShader, 0, 0);
 			deviceContext->PSSetShader(quadCompositeShader.pShader, 0, 0);
@@ -846,10 +846,12 @@ void InitRenderData()
 		D3D11_DEPTH_STENCIL_DESC dsDesc;
 		ZeroMemory(&dsDesc, sizeof(D3D11_DEPTH_STENCIL_DESC));
 
-		dsDesc.DepthEnable = false;
-		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-		//dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
-		//dsDesc.StencilEnable = true;
+		dsDesc.DepthEnable = true;
+		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
+		//dsDesc.StencilEnable = false;
+		//dsDesc.FrontFace.StencilFailOp = dsDesc.FrontFace.StencilDepthFailOp = dsDesc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		//dsDesc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
 
 		result = device->CreateDepthStencilState(&dsDesc, &depthStencilStateWithDepthTest);
 		if (FAILED(result))
@@ -873,7 +875,7 @@ void InitRenderData()
 
 		D3D11_BLEND_DESC blendDesc = {};
 		blendDesc.AlphaToCoverageEnable = FALSE;
-		blendDesc.IndependentBlendEnable = FALSE;
+		blendDesc.IndependentBlendEnable = TRUE;
 		blendDesc.RenderTarget[0].BlendEnable = TRUE;
 		blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
 		blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
@@ -1017,6 +1019,8 @@ void InitRenderData()
 	}
 
 	D3D11_VIEWPORT viewport = { 0.0f, 0.0f, static_cast<float>(WIDTH), static_cast<float>(HEIGHT), 0.0f, 1.0f };
+	//viewport.MinDepth = 0;
+	//viewport.MaxDepth = 1;
 	deviceContext->RSSetViewports(1, &viewport);
 
 	D3D11_RECT scissorRect = { 0, 0, WIDTH, HEIGHT };
