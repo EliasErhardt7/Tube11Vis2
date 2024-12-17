@@ -481,6 +481,8 @@ float4 PSMain(GSOutput input) : SV_TARGET {
 			uint2 old = uint2(0,0);
 				
 			InterlockedMin(kBuffer[listPos(i, input)].x, value.x, old.x);
+			//InterlockedMin(kBuffer[listPos(i, input)].y, value.y, old.y);
+			
 			old.y = kBuffer[listPos(i, input)].y;
 			if(value.x<old.x){
 				
