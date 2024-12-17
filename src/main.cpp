@@ -219,6 +219,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 	ShowWindow(hWnd, nCmdShow);
 
+	camera.Init(hWnd);
+
 	mDataset = std::make_unique<Dataset>();
 
 	IMGUI_CHECKVERSION();
@@ -235,6 +237,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	ImGui_ImplDX11_Init(device, deviceContext);
 
 	InitRenderData();
+
+	
 
 	// main loop
 	timer.Start();
@@ -378,6 +382,9 @@ void UpdateTick(float deltaTime)
 	const float cameraSpeed = 1.0f * deltaTime;
 	const float rotationSpeed = 1.0f * deltaTime;
 
+	
+	camera.UpdateMouse(rotationSpeed);
+
 	// Forward/Backward movement
 	if (GetAsyncKeyState('W') & 0x8000) camera.MoveForward(cameraSpeed);
 	if (GetAsyncKeyState('S') & 0x8000) camera.MoveForward(-cameraSpeed);
@@ -386,12 +393,12 @@ void UpdateTick(float deltaTime)
 	if (GetAsyncKeyState('A') & 0x8000) camera.MoveRight(-cameraSpeed);
 	if (GetAsyncKeyState('D') & 0x8000) camera.MoveRight(cameraSpeed);
 	// Up/Down movement
-	if (GetAsyncKeyState(VK_SPACE) & 0x8000) camera.MoveUp(cameraSpeed);
-	if (GetAsyncKeyState(VK_SHIFT) & 0x8000) camera.MoveUp(-cameraSpeed);
+	//if (GetAsyncKeyState(VK_SPACE) & 0x8000) camera.MoveUp(cameraSpeed);
+	//if (GetAsyncKeyState(VK_SHIFT) & 0x8000) camera.MoveUp(-cameraSpeed);
 
 	// Rotation
-	if (GetAsyncKeyState('E') & 0x8000) camera.RotateY(-rotationSpeed);
-	if (GetAsyncKeyState('Q') & 0x8000) camera.RotateY(rotationSpeed);
+	if (GetAsyncKeyState('E') & 0x8000) camera.MoveUp(rotationSpeed);
+	if (GetAsyncKeyState('Q') & 0x8000) camera.MoveUp(-rotationSpeed);
 
 	// Update view transform
 	transforms.view = DirectX::XMMatrixTranspose(camera.GetViewMatrix());
@@ -1349,26 +1356,31 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 {
 	if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
 		return true;
-	// check for window closing
+	if (camera.m_mouse) // Ensure m_mouse is accessible here
+	{
+		camera.m_mouse->ProcessMessage(message, wParam, lParam);
+	}
+	// Handle mouse messages
 	switch (message)
 	{
-		case WM_SIZE:
+	case WM_SIZE:
+	{
+		if (wParam != SIZE_MINIMIZED && finishInit)
 		{
-			if (wParam != SIZE_MINIMIZED && finishInit)
-			{
-				OnSwapChainResized(hWnd);
-			}
+			OnSwapChainResized(hWnd);
 		}
-		break;
-		case WM_DESTROY:
-		{
-			PostQuitMessage(0);
-			return 0;
-		}
-		break;
+	}
+	break;
+
+	case WM_DESTROY:
+	{
+		PostQuitMessage(0);
+		return 0;
+	}
+	break;
 	}
 
-	// handle messages that the switch statement did not handle
+	// Handle messages that the switch statement did not handle
 	return DefWindowProc(hWnd, message, wParam, lParam);
 }
 
