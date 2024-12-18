@@ -6,7 +6,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <Mouse.h>
-//#include <Mouse.h>
 #include <d3dcompiler.h>
 #include <SimpleMath.h>
 using namespace DirectX;

@@ -69,30 +69,13 @@ void Camera::UpdateMouse(float rotationSpeed)
 
 	static bool isRightButtonDown = false;
 
-
-	/*if (tracker.rightButton == Mouse::ButtonStateTracker::ButtonState::PRESSED)
-	{
-		m_mouse->SetMode(Mouse::MODE_RELATIVE);
-	}
-	else if (tracker.rightButton == Mouse::ButtonStateTracker::ButtonState::RELEASED)
-	{
-		m_mouse->SetMode(Mouse::MODE_ABSOLUTE);
-	}*/
-
 	if (mouse.positionMode == Mouse::MODE_RELATIVE)
 	{
-		//XMVECTORF32 delta = { float(mouse.y), float(mouse.x), 0.f };
 		XMVECTORF32 delta = { float(mouse.y), float(mouse.x), 0.f };
 
 		pitch -= delta[0] * ROTATION_GAIN;
 
 		yaw -= delta[1] * ROTATION_GAIN;
-
-		//RotateY(float(mouse.y) * rotationSpeed);
-
-
-
-
 	}
 
 	m_mouse->SetMode(mouse.rightButton

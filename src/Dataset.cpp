@@ -76,16 +76,10 @@ void Dataset::importFromFile(std::string filename)
 		case eStatus::INITIAL:
 			if (c == 'v') status = eStatus::AFTERV;
 			else if (c == 'l') {
-				// INFO: The following is some kind of a hack: In all provided datasets the indices given for the lines
-				// are just exactly made out of the vertices before in linear order. Therefore we don't care about the actual index numbers and
-				// whenever we encounter an l line we just assume that. It saves tons of interpreting work...
-				
-				// The following works since the size of newLineBuffer is similar to the current index number and should speed up the process even more
-				// as we don't have to walk through the unnecessary length of the indices
 				unsigned int jumpForward = (getDigitCountForUInt(currVertexCountInPolyBuffer) + 1) * tmpVertexBuffer.size(); 
 				currVertexCountInPolyBuffer += tmpVertexBuffer.size();
 				newPolyBuffer.push_back({ std::move(tmpVertexBuffer) });
-				if (data[i+1] != '\r' && data[i+1] != '\0') i += jumpForward;	// Only jump forward if there is no immediate line break
+				if (data[i+1] != '\r' && data[i+1] != '\0') i += jumpForward;
 				status = eStatus::IGNOREUNTILNEWLINE;
 			}
 			else if (c == 'g') status = eStatus::IGNOREUNTILNEWLINE;
@@ -99,8 +93,7 @@ void Dataset::importFromFile(std::string filename)
 			
 		case eStatus::READVT:
 			if (c == '\n' || c == ' ') {
-				if (tNl > 0) { // if not its probably just an extra line indent
-					// Number should now be in tmpNumber
+				if (tNl > 0) { 
 					float result;
 					auto answer = fast_float::from_chars(&tmpNumber[0], &tmpNumber[tNl], result);
 					if (answer.ec != std::errc()) {
@@ -109,7 +102,7 @@ void Dataset::importFromFile(std::string filename)
 					}
 					else {
 						tmpVertex.data = result;
-						// vertex info is now complete. Add to vertexbuffer:
+						
 						tmpVertexBuffer.push_back(tmpVertex);
 						status = eStatus::INITIAL;
 					}
@@ -181,31 +174,19 @@ void Dataset::fillGPUReadyBuffer(std::vector<VertexData>& newVertexBuffer, std::
     uint32_t currIndex = 0;
 	int count = 0;
     for (const Poly& pl : mPolyLineBuffer) {
-		//if (count == 1) { break; }
-
-		/*VertexData vertex;
-		vertex.curvature = pl.vertices[0].curvature;
-		vertex.data = pl.vertices[0].data;
-		vertex.position = DirectX::XMFLOAT3(pl.vertices[0].position.x + 0.001, pl.vertices[0].position.y + 0.001, pl.vertices[0].position.z + 0.001);*/
-		//newVertexBuffer.push_back(pl.vertices[0]);
+		
 		// Add middle vertices
 		for (uint32_t i = 0; i < pl.vertices.size(); i++) {
 			newVertexBuffer.push_back(pl.vertices[i]);
 		}
-		/*VertexData vertex2;
-		vertex2.curvature = pl.vertices[pl.vertices.size() - 2].curvature;
-		vertex2.data = pl.vertices[pl.vertices.size() - 2].data;
-		vertex2.position = DirectX::XMFLOAT3(pl.vertices[pl.vertices.size() - 2].position.x + 0.001, pl.vertices[pl.vertices.size() - 2].position.y + 0.001, pl.vertices[pl.vertices.size() - 2].position.z + 0.001);
-		newVertexBuffer.push_back(vertex2);*/
-		//newVertexBuffer.push_back(pl.vertices.back());
 
 		newIndexBuffer.push_back(currIndex+1);
-		// Create indices for line strip with adjacency
+		
 		for (uint32_t i = 1; i < pl.vertices.size()-1; i++) {
 			newIndexBuffer.push_back(currIndex + i);
 		}
 		newIndexBuffer.push_back(currIndex + pl.vertices.size() - 2);
-		//newIndexBuffer.push_back(currIndex+ pl.vertices.size() - 3);
+		
 		currIndex += pl.vertices.size();
 			
 		
@@ -280,8 +261,7 @@ void Dataset::preprocessLineData()
 	for (Poly& pLine : mPolyLineBuffer) {
 		for (VertexData& v : pLine.vertices) {
 			v.data = (v.data - mMinDataValue) / (mMaxDataValue - mMinDataValue);
-			// Note: The following is not the best solution. Degenerate points(lines) should maybe get the curvature
-			// of the next or previous one. But in our datasets those dont happen anyway
+
 			if (v.curvature < 0.0) v.curvature = boundsCurvature.x; 
 			v.curvature = 1.0F - (v.curvature - boundsCurvature.x) / (boundsCurvature.y - boundsCurvature.x);
 		}

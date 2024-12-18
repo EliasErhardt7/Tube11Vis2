@@ -8,7 +8,6 @@
 #include <sstream>
 #include <d3dcompiler.h>
 #include <format>
-//#include <fmt/core.h>
 #pragma comment (lib, "d3d11.lib")
 #pragma comment (lib, "d3dcompiler.lib")
 
@@ -145,11 +144,6 @@ int mkBufferLayerCount = 16;
 
 bool mShowUI = true;
 ImGui::FileBrowser mOpenFileDialog;
-//
-///////////////////////
-
-///////////////////////
-// global functions
 
 // Direct3D initialization and shutdown
 void InitD3D(HWND hWnd);
@@ -169,9 +163,6 @@ void RenderFrame();
 extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 // WindowProc callback function
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
-
-//
-///////////////////////
 
 // entry point
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
@@ -205,7 +196,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	// create the window and use the result as the handle
 	hWnd = CreateWindowEx(NULL,
 		"DirectX Window",           // name of the window class
-		"DirectX 11 Playground",    // title of the window
+		"Advanced Rendering of Line Data",    // title of the window
 		WS_OVERLAPPEDWINDOW,        // window style
 		200,                        // x-position of the window
 		100,                        // y-position of the window
@@ -301,7 +292,7 @@ void loadDatasetFromFile(std::string& filename) {
 	HRESULT result = device->CreateBuffer(&id, NULL, &mIndexBuffer);
 	if (FAILED(result))
 	{
-		std::cerr << "Failed to create screen aligned quad vertex buffer\n";
+		std::cerr << "Failed to create index buffer\n";
 		exit(-1);
 	}
 	// copy vertex data to buffer
@@ -325,7 +316,7 @@ void loadDatasetFromFile(std::string& filename) {
 	result = device->CreateBuffer(&bd, NULL, &mNewVertexBuffer);
 	if (FAILED(result))
 	{
-		std::cerr << "Failed to create screen aligned quad vertex buffer\n";
+		std::cerr << "Failed to create vertex buffer\n";
 		exit(-1);
 	}
 
@@ -346,7 +337,7 @@ void loadDatasetFromFile(std::string& filename) {
 	result = device->CreateInputLayout(ied, 3, quadCompositeShader.vsBlob->GetBufferPointer(), quadCompositeShader.vsBlob->GetBufferSize(), &vertexTubeMesh.vertexLayout);
 	if (FAILED(result))
 	{
-		std::cerr << "Failed to create screen aligned quad input layout\n";
+		std::cerr << "Failed to create index input layout\n";
 		exit(-1);
 	}
 
@@ -358,21 +349,6 @@ void loadDatasetFromFile(std::string& filename) {
 
 	mReplaceOldBufferWithNextFrame = true;
 	vertexBufferSet = true;
-}
-
-void toggleInputMode() {
-
-}
-
-/// <summary>
-/// Switches between unobstracted fullscreen mode and windowed mode
-/// </summary>
-void toggleFullscreenMode() {
-	if (mFullscreenModeEnabled)
-		//gvk::context().main_window()->switch_to_windowed_mode();
-	//else
-		//gvk::context().main_window()->switch_to_fullscreen_mode();
-		mFullscreenModeEnabled = !mFullscreenModeEnabled;
 }
 
 void UpdateTick(float deltaTime)
@@ -391,9 +367,6 @@ void UpdateTick(float deltaTime)
 	// Left/Right movement
 	if (GetAsyncKeyState('A') & 0x8000) camera.MoveRight(-cameraSpeed);
 	if (GetAsyncKeyState('D') & 0x8000) camera.MoveRight(cameraSpeed);
-	// Up/Down movement
-	//if (GetAsyncKeyState(VK_SPACE) & 0x8000) camera.MoveUp(cameraSpeed);
-	//if (GetAsyncKeyState(VK_SHIFT) & 0x8000) camera.MoveUp(-cameraSpeed);
 
 	// Rotation
 	if (GetAsyncKeyState('E') & 0x8000) camera.MoveUp(rotationSpeed);
@@ -623,13 +596,13 @@ void RenderFrame()
 	}
 	uni.mVertexAlphaMode = mVertexAlphaMode;
 	if (mVertexAlphaMode == 0)
-		uni.mVertexAlphaBounds = XMFLOAT4(mVertexAlphaStatic, mVertexAlphaBounds[1], 0, 0);//uni.mVertexAlphaBounds[0] = mVertexAlphaStatic;
+		uni.mVertexAlphaBounds = XMFLOAT4(mVertexAlphaStatic, mVertexAlphaBounds[1], 0, 0);
 	else
 		uni.mVertexAlphaBounds = XMFLOAT4(mVertexAlphaBounds[0], mVertexAlphaBounds[1], 0, 0);;
 
 	uni.mVertexRadiusMode = mVertexRadiusMode;
 	if (mVertexRadiusMode == 0)
-		uni.mVertexRadiusBounds = XMFLOAT4(mVertexRadiusStatic, mVertexRadiusBounds[1], 0, 0);//uni.mVertexRadiusBounds[0] = mVertexRadiusStatic;
+		uni.mVertexRadiusBounds = XMFLOAT4(mVertexRadiusStatic, mVertexRadiusBounds[1], 0, 0);
 	else
 		uni.mVertexRadiusBounds = XMFLOAT4(mVertexRadiusBounds[0], mVertexRadiusBounds[1], 0, 0);
 	uni.mDataMaxLineLength = mDataset->getMaxLineLength();
@@ -666,8 +639,6 @@ void RenderFrame()
 	deviceContext->OMSetBlendState(blendState, blendFactor, 0xFFFFFFFF);
 	if (vertexBufferSet) {
 		if (mMainRenderPassEnabled) {
-
-			//deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
 			
 			UINT initialCounts[] = { 0 }; // Optional: Reset counters for append/consume buffers
 			deviceContext->OMSetRenderTargetsAndUnorderedAccessViews(1, &backbuffer, NULL, 1, 1, &csUAVs[0], initialCounts);
@@ -681,11 +652,6 @@ void RenderFrame()
 			deviceContext->IASetIndexBuffer(mIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 			deviceContext->IASetPrimitiveTopology(vertexTubeMesh.topology);
 
-
-			//deviceContext->PSSetShaderResources(0, 1, &compositeSRVs[0]);
-
-			//deviceContext->PSSetSamplers(0, 1, &defaultSamplerState);
-
 			deviceContext->VSSetConstantBuffers(0, 1, &compositionConstantBuffer);
 			deviceContext->GSSetConstantBuffers(0, 1, &compositionConstantBuffer);
 			deviceContext->PSSetConstantBuffers(0, 1, &compositionConstantBuffer);
@@ -694,9 +660,7 @@ void RenderFrame()
 			//	deviceContext->Draw(mDrawCalls[i].numberOfPrimitives, mDrawCalls[i].firstIndex);
 			//}
 			deviceContext->DrawIndexed(vertexTubeMesh.indexCount, 0, 0);
-			//deviceContext->Draw(vertexTubeMesh.vertexCount, 0);
-			//unbind SRVs
-			//deviceContext->PSSetShaderResources(0, 1, &NULL_SRV);
+
 			deviceContext->GSSetShader(NULL, 0, 0);
 		}
 
@@ -704,7 +668,7 @@ void RenderFrame()
 		if (mResolveKBuffer) {
 			deviceContext->OMSetRenderTargets(1, &backbuffer, NULL);
 			deviceContext->OMSetDepthStencilState(depthStencilStateWithDepthTest, 0);
-			//deviceContext->IASetVertexBuffers(0, 1, nullptr, 0, 0);
+
 			deviceContext->VSSetShader(resolveShader.vShader, 0, 0);
 
 			deviceContext->PSSetShader(resolveShader.pShader, 0, 0);
@@ -721,20 +685,7 @@ void RenderFrame()
 			deviceContext->PSSetShaderResources(0, 1, &NULL_SRV);
 		}
 	}
-	// LINES SHADER
-	/*
-	deviceContext->VSSetShader(linesShader.vShader, 0, 0);
-	deviceContext->PSSetShader(linesShader.pShader, 0, 0);
 
-	deviceContext->IASetInputLayout(lineTubeMesh.vertexLayout);
-	deviceContext->IASetVertexBuffers(0, 1, &lineTubeMesh.vertexBuffer, &lineTubeMesh.stride, &lineTubeMesh.offset);
-	deviceContext->IASetPrimitiveTopology(lineTubeMesh.topology);
-
-	deviceContext->VSSetConstantBuffers(0, 1, &compositionConstantBuffer);
-	deviceContext->PSSetConstantBuffers(0, 1, &compositionConstantBuffer);
-
-	deviceContext->Draw(lineTubeMesh.vertexCount, 0);*/
-	// switch the back buffer and the front buffer
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
@@ -775,7 +726,7 @@ void InitRenderData()
 		result = device->CreateBuffer(&bufferDesc, NULL, &storageTargets[0].structuredBuffer);
 		if (FAILED(result))
 		{
-			std::cerr << "Failed to create render target texture\n";
+			std::cerr << "Failed to create buffer\n";
 			exit(-1);
 		}
 
@@ -788,7 +739,7 @@ void InitRenderData()
 		result = device->CreateShaderResourceView(storageTargets[0].structuredBuffer, &srvDesc, &storageTargets[0].shaderResourceView);
 		if (FAILED(result))
 		{
-			std::cerr << "Failed to create render target texture SRV\n";
+			std::cerr << "Failed to create SRV\n";
 			exit(-1);
 		}
 
@@ -800,14 +751,12 @@ void InitRenderData()
 		result = device->CreateUnorderedAccessView(storageTargets[0].structuredBuffer, &uavDesc, &storageTargets[0].unorderedAccessView);
 		if (FAILED(result))
 		{
-			std::cerr << "Failed to create render target texture UAV\n";
+			std::cerr << "Failed to create UAV\n";
 			exit(-1);
 		}
 	}
 
 	// ----------------------- STORAGE TARGET END--------------------------------------------
-
-	// intialize depth-stencil target
 	{
 		D3D11_TEXTURE2D_DESC descDepth;
 		ZeroMemory(&descDepth, sizeof(D3D11_TEXTURE2D_DESC));
@@ -855,9 +804,6 @@ void InitRenderData()
 		dsDesc.DepthEnable = true;
 		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
 		dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
-		//dsDesc.StencilEnable = false;
-		//dsDesc.FrontFace.StencilFailOp = dsDesc.FrontFace.StencilDepthFailOp = dsDesc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
-		//dsDesc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
 
 		result = device->CreateDepthStencilState(&dsDesc, &depthStencilStateWithDepthTest);
 		if (FAILED(result))
@@ -897,7 +843,6 @@ void InitRenderData()
 
 	// initialize rasterizer state
 	{
-		// Setup the raster description which will determine how and what polygons will be drawn.
 		D3D11_RASTERIZER_DESC rasterDesc;
 		ZeroMemory(&rasterDesc, sizeof(D3D11_RASTERIZER_DESC));
 
@@ -920,49 +865,6 @@ void InitRenderData()
 			exit(-1);
 		}
 		deviceContext->RSSetState(defaultRasterizerState);
-	}
-
-	{
-		D3D11_BUFFER_DESC bd;
-		ZeroMemory(&bd, sizeof(D3D11_BUFFER_DESC));
-
-		bd.Usage = D3D11_USAGE_DYNAMIC;
-		bd.ByteWidth = static_cast<UINT>(sizeof(XMFLOAT3) * LineTube.size());
-
-		bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-		bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-
-		// create the buffer
-		result = device->CreateBuffer(&bd, NULL, &lineTubeMesh.vertexBuffer);
-		if (FAILED(result))
-		{
-			std::cerr << "Failed to create screen aligned quad vertex buffer\n";
-			exit(-1);
-		}
-
-		// copy vertex data to buffer
-		D3D11_MAPPED_SUBRESOURCE ms;
-		deviceContext->Map(lineTubeMesh.vertexBuffer, NULL, D3D11_MAP_WRITE_DISCARD, NULL, &ms);
-		memcpy(ms.pData, LineTube.data(), sizeof(XMFLOAT3) * LineTube.size());
-		deviceContext->Unmap(lineTubeMesh.vertexBuffer, NULL);
-
-		// create input vertex layout
-		D3D11_INPUT_ELEMENT_DESC ied[] =
-		{
-			{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0}
-		};
-
-		result = device->CreateInputLayout(ied, 1, linesShader.vsBlob->GetBufferPointer(), linesShader.vsBlob->GetBufferSize(), &lineTubeMesh.vertexLayout);
-		if (FAILED(result))
-		{
-			std::cerr << "Failed to create screen aligned quad input layout\n";
-			exit(-1);
-		}
-
-		lineTubeMesh.vertexCount = static_cast<UINT>(LineTube.size());
-		lineTubeMesh.stride = static_cast<UINT>(sizeof(XMFLOAT3));
-		lineTubeMesh.offset = 0;
-		lineTubeMesh.topology = D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP_ADJ;
 	}
 
 	{
@@ -1001,11 +903,6 @@ void InitRenderData()
 			exit(-1);
 		}
 	}
-
-	// compute kBufferInfo parameter
-	{
-		
-	}
 	{
 		D3D11_BUFFER_DESC bd;
 		ZeroMemory(&bd, sizeof(CD3D11_BUFFER_DESC));
@@ -1019,14 +916,13 @@ void InitRenderData()
 		result = device->CreateBuffer(&bd, NULL, &computeConstantBuffer);
 		if (FAILED(result))
 		{
-			std::cerr << "Failed to create blur constant buffer\n";
+			std::cerr << "Failed to create compute constant buffer\n";
 			exit(-1);
 		}
 	}
 
 	D3D11_VIEWPORT viewport = { 0.0f, 0.0f, static_cast<float>(WIDTH), static_cast<float>(HEIGHT), 0.0f, 1.0f };
-	//viewport.MinDepth = 0;
-	//viewport.MaxDepth = 1;
+
 	deviceContext->RSSetViewports(1, &viewport);
 
 	D3D11_RECT scissorRect = { 0, 0, WIDTH, HEIGHT };
@@ -1042,25 +938,12 @@ void CleanUpRenderData()
 {
 	// states
 	defaultRasterizerState->Release();
-	//defaultSamplerState->Release();
 
 	// constant buffers
 	transformConstantBuffer->Release();
-	//lightSourceConstantBuffer->Release();
-	//materialConstantBuffer->Release();
 
 	compositionConstantBuffer->Release();
 	computeConstantBuffer->Release();
-
-
-	// meshes
-	if (vertexTubeMesh.vertexBuffer != nullptr) {
-		//vertexTubeMesh.vertexBuffer->Release();
-	}
-	if (vertexTubeMesh.vertexLayout != nullptr) {
-		//vertexTubeMesh.vertexLayout->Release();
-	}
-
 
 	// depth-stencil states
 	depthStencilStateWithDepthTest->Release();
@@ -1069,17 +952,6 @@ void CleanUpRenderData()
 	// depth-stencil target
 	depthStencilTarget.dsView->Release();
 	depthStencilTarget.dsTexture->Release();
-
-	// render targets
-	for (UINT32 i = 0; i < NUM_RENDERTARGETS; ++i)
-	{
-		RenderTarget& renderTarget = renderTargets[i];
-
-		//renderTarget.unorderedAccessView->Release();
-		//renderTarget.shaderResourceView->Release();
-		//renderTarget.renderTargetView->Release();
-		//renderTarget.renderTargetTexture->Release();
-	}
 }
 
 void InitD3D(HWND hWnd)
@@ -1094,7 +966,6 @@ void InitD3D(HWND hWnd)
 	scd.SampleDesc.Count = 1;                                   // how many multisamples
 	scd.Windowed = TRUE;                                        // windowed/full-screen mode
 
-	//D3D_FEATURE_LEVEL* featureLevel;
 	UINT createDeviceFlags = D3D11_CREATE_DEVICE_DEBUG;
 
 	// create a device, device context and swap chain
@@ -1132,7 +1003,7 @@ void InitD3D(HWND hWnd)
 
 	// textured screen-aligned quad shader
 	{
-		auto hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "VSMain", "vs_5_0", compileFlags, 0, &quadCompositeShader.vsBlob, &errorBlob);
+		auto hr = D3DCompileFromFile(L"shaders/tubeGeneration.hlsl", 0, 0, "VSMain", "vs_5_0", compileFlags, 0, &quadCompositeShader.vsBlob, &errorBlob);
 		if (FAILED(hr))
 		{
 			if (errorBlob)
@@ -1144,7 +1015,7 @@ void InitD3D(HWND hWnd)
 			exit(-1);
 		}
 
-		hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "GSMain", "gs_5_0", compileFlags, 0, &quadCompositeShader.gsBlob, &errorBlob);
+		hr = D3DCompileFromFile(L"shaders/tubeGeneration.hlsl", 0, 0, "GSMain", "gs_5_0", compileFlags, 0, &quadCompositeShader.gsBlob, &errorBlob);
 		if (FAILED(hr))
 		{
 			if (errorBlob)
@@ -1156,7 +1027,7 @@ void InitD3D(HWND hWnd)
 			exit(-1);
 		}
 
-		hr = D3DCompileFromFile(L"shaders/quadcomposite.hlsl", 0, 0, "PSMain", "ps_5_0", compileFlags, 0, &quadCompositeShader.psBlob, &errorBlob);
+		hr = D3DCompileFromFile(L"shaders/tubeGeneration.hlsl", 0, 0, "PSMain", "ps_5_0", compileFlags, 0, &quadCompositeShader.psBlob, &errorBlob);
 		if (FAILED(hr))
 		{
 			if (errorBlob)
@@ -1252,43 +1123,10 @@ void InitD3D(HWND hWnd)
 		device->CreatePixelShader(resolveShader.psBlob->GetBufferPointer(), resolveShader.psBlob->GetBufferSize(), NULL, &resolveShader.pShader);
 	}
 
-	// helper lines
-	{
-		auto hr = D3DCompileFromFile(L"shaders/2dlines.hlsl", 0, 0, "VSMain", "vs_5_0", compileFlags, 0, &linesShader.vsBlob, &errorBlob);
-		if (FAILED(hr))
-		{
-			if (errorBlob)
-			{
-				OutputDebugStringA((char*)errorBlob->GetBufferPointer());
-				errorBlob->Release();
-			}
-
-			exit(-1);
-		}
-
-		hr = D3DCompileFromFile(L"shaders/2dlines.hlsl", 0, 0, "PSMain", "ps_5_0", compileFlags, 0, &linesShader.psBlob, &errorBlob);
-		if (FAILED(hr))
-		{
-			if (errorBlob)
-			{
-				OutputDebugStringA((char*)errorBlob->GetBufferPointer());
-				errorBlob->Release();
-			}
-
-			exit(-1);
-		}
-
-		// encapsulate both shaders into shader objects
-		device->CreateVertexShader(linesShader.vsBlob->GetBufferPointer(), linesShader.vsBlob->GetBufferSize(), NULL, &linesShader.vShader);
-		device->CreatePixelShader(linesShader.psBlob->GetBufferPointer(), linesShader.psBlob->GetBufferSize(), NULL, &linesShader.pShader);
-	}
-
 }
 
 void ShutdownD3D()
 {
-
-
 	computeShader.csBlob->Release();
 	computeShader.cShader->Release();
 
@@ -1329,7 +1167,7 @@ void OnSwapChainResized(HWND hWnd)
 
 	HRESULT hr = swapchain->ResizeBuffers(0, WIDTH, HEIGHT, DXGI_FORMAT_UNKNOWN, 0);
 	if (FAILED(hr)) {
-		// Handle error
+		std::cerr << "Resize didnt work!";
 	}
 
 	ID3D11Texture2D* pBackBuffer = nullptr;
@@ -1355,7 +1193,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 {
 	if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
 		return true;
-	if (camera.m_mouse) // Ensure m_mouse is accessible here
+	if (camera.m_mouse)
 	{
 		camera.m_mouse->ProcessMessage(message, wParam, lParam);
 	}

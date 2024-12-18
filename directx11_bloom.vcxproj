@@ -36,12 +36,10 @@
     <ClCompile Include="imgui\imgui_widgets.cpp" />
     <ClCompile Include="src\camera.cpp" />
     <ClCompile Include="src\Dataset.cpp" />
-    <ClCompile Include="src\geometry.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\util\timer.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ext\tiny_obj_loader.h" />
     <ClInclude Include="imgui\backends\imgui_impl_dx11.h" />
     <ClInclude Include="imgui\backends\imgui_impl_win32.h" />
     <ClInclude Include="imgui\imconfig.h" />
@@ -56,7 +54,6 @@
     <ClInclude Include="include\imfilebrowser.h" />
     <ClInclude Include="include\resource.h" />
     <ClInclude Include="include\util\timer.h" />
-    <ClInclude Include="include\util\util.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
